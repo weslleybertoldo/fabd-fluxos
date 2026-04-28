@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { formatUserName } from "@/lib/utils";
 
 interface HeaderProps {
@@ -15,12 +16,12 @@ export function Header({ user }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-        <a href="/app" className="flex items-center gap-3">
+        <Link href="/app" className="flex items-center gap-3">
           <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#c41e2a] text-sm font-bold text-white">
             FF
           </span>
           <span className="text-base font-semibold text-slate-900">FABD Fluxos</span>
-        </a>
+        </Link>
 
         <div className="flex items-center gap-3">
           <div className="hidden text-right sm:block">
