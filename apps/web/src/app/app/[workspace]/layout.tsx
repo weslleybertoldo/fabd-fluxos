@@ -14,15 +14,17 @@ export default async function WorkspaceLayout({
   return (
     <div className="space-y-8">
       <nav className="flex flex-wrap items-center gap-3 border-b border-slate-200 pb-4">
-        <Link href="/app" className="text-sm text-slate-500 hover:text-slate-900">
-          Workspaces
-        </Link>
-        <span className="text-slate-300">/</span>
         <Link
           href={`/app/${ctx.workspace.slug}`}
           className="text-sm font-semibold text-slate-900"
         >
           {ctx.workspace.name}
+        </Link>
+        <Link
+          href="/app?picker=1"
+          className="text-xs text-slate-500 hover:text-slate-900"
+        >
+          (trocar workspace)
         </Link>
         {ctx.member.role === "admin" ? (
           <div className="ml-auto flex gap-2">

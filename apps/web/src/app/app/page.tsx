@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { requestMembership } from "@/lib/actions/members";
 import type { WorkspaceMemberRow, WorkspaceRow } from "@/lib/types";
@@ -13,7 +14,7 @@ type WorkspaceCard = WorkspaceRow & {
 export default async function AppHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ pending?: string; error?: string }>;
+  searchParams: Promise<{ pending?: string; error?: string; picker?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createSupabaseServerClient();
@@ -45,6 +46,18 @@ export default async function AppHomePage({
   const active = cards.filter((c) => c.member_status === "active");
   const otherKnown = cards.filter((c) => c.member_status && c.member_status !== "active");
   const discoverable = cards.filter((c) => !c.member_status);
+
+  // Atalho: se o usuario eh membro ativo de exatamente 1 workspace e nao pediu o picker
+  // explicitamente (?picker=1) nem caiu aqui por erro, manda direto pras diretorias.
+  const onlyActive = active.length === 1 ? active[0] : null;
+  const skipPicker =
+    onlyActive !== null &&
+    !params.picker &&
+    !params.error &&
+    !params.pending;
+  if (skipPicker && onlyActive) {
+    redirect(`/app/${onlyActive.slug}`);
+  }
 
   return (
     <div className="space-y-10">
