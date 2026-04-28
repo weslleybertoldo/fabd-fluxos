@@ -14,7 +14,7 @@ export default async function AdminLayout({
   return (
     <div className="space-y-6">
       <nav className="flex gap-2 border-b border-slate-200 pb-3">
-        <AdminTab href={`/app/${slug}/admin/members`} label="Membros" />
+        <AdminTab href={`/app/${slug}/admin/settings`} label="Configuracao" />
         <AdminTab href={`/app/${slug}/admin/audit`} label="Historico de acoes" />
       </nav>
       {children}

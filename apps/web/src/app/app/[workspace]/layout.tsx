@@ -29,10 +29,10 @@ export default async function WorkspaceLayout({
         {ctx.member.role === "admin" ? (
           <div className="ml-auto flex gap-2">
             <Link
-              href={`/app/${ctx.workspace.slug}/admin/members`}
+              href={`/app/${ctx.workspace.slug}/admin/settings`}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Membros
+              Configuracao
             </Link>
             <Link
               href={`/app/${ctx.workspace.slug}/admin/audit`}

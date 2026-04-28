@@ -47,12 +47,8 @@ export default async function WorkspaceHomePage({
                 href={`/app/${ctx.workspace.slug}/${d.slug}`}
                 className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-slate-300 hover:shadow-md"
               >
-                <div
-                  className="grid size-12 place-items-center rounded-xl"
-                  style={{ backgroundColor: `${d.color ?? "#1e3a8a"}1A`, color: d.color ?? "#1e3a8a" }}
-                >
-                  <DirectoryIcon icon={d.icon} />
-                </div>
+                <DirectoryThumb directory={d} />
+
                 <h3 className="mt-4 text-lg font-semibold text-slate-900">{d.name}</h3>
                 {d.description ? (
                   <p className="mt-1 text-sm text-slate-500">{d.description}</p>
@@ -69,17 +65,30 @@ export default async function WorkspaceHomePage({
   );
 }
 
-function DirectoryIcon({ icon }: { icon: string | null }) {
-  // Pra evitar dependencia client-only de iconify-icon nesse RSC,
-  // renderizamos o nome textual; substituir por <iconify-icon> em client component depois.
-  if (!icon) return <span className="text-lg font-bold">FF</span>;
-  const initials = icon
-    .replace(/^mdi:/, "")
-    .split("-")
-    .map((p) => p[0])
+function DirectoryThumb({ directory }: { directory: DirectoryRow }) {
+  const initials = directory.name
+    .split(/\s+/)
+    .map((w) => w[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
     .toUpperCase();
-  return <span className="text-base font-bold">{initials || "DD"}</span>;
+  const bg = directory.color ?? "#1E3A8A";
+  return (
+    <div
+      className="grid size-14 place-items-center overflow-hidden rounded-2xl text-base font-bold text-white"
+      style={{ backgroundColor: bg }}
+    >
+      {directory.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={directory.image_url}
+          alt={directory.name}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        initials || "FF"
+      )}
+    </div>
+  );
 }

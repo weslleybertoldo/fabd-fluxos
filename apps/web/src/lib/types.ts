@@ -38,6 +38,7 @@ export type DirectoryRow = {
   description: string | null;
   icon: string | null;
   color: string | null;
+  image_url: string | null;
   order_index: number;
   responsible_user_id: string | null;
   created_by: string;
