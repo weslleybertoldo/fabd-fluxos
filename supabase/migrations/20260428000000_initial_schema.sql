@@ -478,9 +478,9 @@ revoke all on workspaces, workspace_members, directories, projects, flows, phase
 -- POLICIES
 -- ============================================================================
 
--- workspaces: vê os que é membro
+-- workspaces: vê os que é membro OU que criou (importante pro flow de criar workspace + RETURNING antes de virar member)
 create policy ws_select on workspaces for select to authenticated
-  using (is_workspace_member(id));
+  using (is_workspace_member(id) or created_by = auth.uid());
 create policy ws_insert on workspaces for insert to authenticated
   with check (created_by = auth.uid());
 create policy ws_update on workspaces for update to authenticated
