@@ -270,6 +270,45 @@ export async function deleteDirectory(input: {
 }
 
 /**
+ * Persiste ordem manual das diretorias: recebe IDs ordenados e atualiza order_index.
+ * So admin do workspace (RLS dir_update).
+ */
+export async function reorderDirectories(input: {
+  workspaceSlug: string;
+  directoryIds: string[];
+}): Promise<ActionResult> {
+  const { sb } = await getDb();
+
+  const ctx = await resolveWorkspace(input.workspaceSlug);
+  if (!ctx.ok) return ctx;
+
+  for (let i = 0; i < input.directoryIds.length; i++) {
+    const id = input.directoryIds[i];
+    if (!id) continue;
+    const { error } = await sb
+      .from("directories")
+      .update({ order_index: i, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) return { ok: false, error: `Reorder ${id}: ${error.message}` };
+  }
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "workspace",
+    entityId: ctx.workspace.id,
+    action: "reorder",
+    changes: { after: { directory_ids: input.directoryIds } },
+    context: { directory_count: input.directoryIds.length },
+  });
+
+  revalidatePath(`/app/${input.workspaceSlug}`);
+  revalidatePath(`/app/${input.workspaceSlug}/admin/settings/directories`);
+  return { ok: true, data: undefined };
+}
+
+/**
  * Persiste a image_url depois do upload client direto no Storage.
  * Recebe a URL publica que o client obteve via getPublicUrl().
  */

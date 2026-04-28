@@ -1,10 +1,26 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   createPhase,
   deletePhase,
+  reorderPhases,
   setPhaseCompleted,
   updatePhase,
 } from "@/lib/actions/phases";
@@ -27,13 +43,23 @@ export function PhasesPanel({
   flowId,
   flowType,
   canEdit,
-  phases,
+  phases: initialPhases,
 }: Props) {
   const router = useRouter();
+  const [phases, setPhases] = useState<PhaseRow[]>(initialPhases);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PhaseRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  // Sincroniza quando o servidor manda novas props (apos router.refresh)
+  useEffect(() => {
+    setPhases(initialPhases);
+  }, [initialPhases]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   function refresh() {
     router.refresh();
@@ -133,6 +159,31 @@ export function PhasesPanel({
     });
   }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = phases.findIndex((p) => p.id === active.id);
+    const newIndex = phases.findIndex((p) => p.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reordered = arrayMove(phases, oldIndex, newIndex);
+    setPhases(reordered); // optimistic
+    start(async () => {
+      const r = await reorderPhases({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId,
+        phaseIds: reordered.map((p) => p.id),
+      });
+      if (!r.ok) {
+        setError(r.error);
+        setPhases(initialPhases); // rollback
+        return;
+      }
+      refresh();
+    });
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -161,22 +212,43 @@ export function PhasesPanel({
               : "Aguardando o admin/diretor criar fases neste fluxo."}
           </p>
         </div>
+      ) : flowType === "non_continuous" ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={canEdit ? handleDragEnd : undefined}
+        >
+          <SortableContext
+            items={phases.map((p) => p.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ol className="space-y-3">
+              {phases.map((p, i) => (
+                <SortablePhaseItem
+                  key={p.id}
+                  phase={p}
+                  index={i}
+                  flowType={flowType}
+                  canEdit={canEdit}
+                  pending={pending}
+                  onToggle={() => toggleComplete(p)}
+                  onEdit={() => setEditing(p)}
+                  onDelete={() => remove(p)}
+                />
+              ))}
+            </ol>
+          </SortableContext>
+        </DndContext>
       ) : (
-        <ol className="space-y-3">
-          {phases.map((p, i) => (
-            <PhaseCard
-              key={p.id}
-              phase={p}
-              index={i}
-              flowType={flowType}
-              canEdit={canEdit}
-              pending={pending}
-              onToggle={() => toggleComplete(p)}
-              onEdit={() => setEditing(p)}
-              onDelete={() => remove(p)}
-            />
-          ))}
-        </ol>
+        <ContinuousGroupedList
+          phases={phases}
+          flowType={flowType}
+          canEdit={canEdit}
+          pending={pending}
+          onToggle={toggleComplete}
+          onEdit={setEditing}
+          onDelete={remove}
+        />
       )}
 
       {creating ? (
@@ -206,6 +278,132 @@ export function PhasesPanel({
   );
 }
 
+function ContinuousGroupedList({
+  phases,
+  flowType,
+  canEdit,
+  pending,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  phases: PhaseRow[];
+  flowType: "continuous" | "non_continuous";
+  canEdit: boolean;
+  pending: boolean;
+  onToggle: (p: PhaseRow) => void;
+  onEdit: (p: PhaseRow) => void;
+  onDelete: (p: PhaseRow) => void;
+}) {
+  // Agrupa por dia (YYYY-MM-DD); fases sem data ficam cada uma no proprio grupo
+  const groups: PhaseRow[][] = [];
+  let lastDay: string | null = null;
+  for (const p of phases) {
+    const day = p.due_date ? p.due_date.slice(0, 10) : null;
+    const last = groups[groups.length - 1];
+    if (day && day === lastDay && last) {
+      last.push(p);
+    } else {
+      groups.push([p]);
+      lastDay = day;
+    }
+  }
+
+  // Index continuo (#1, #2, ...) atravessando grupos
+  let counter = 0;
+
+  return (
+    <ol className="space-y-3">
+      {groups.map((group, gi) => {
+        const startIdx = counter;
+        counter += group.length;
+        if (group.length === 1) {
+          const single = group[0]!;
+          return (
+            <li key={`g-${gi}`}>
+              <PhaseCard
+                phase={single}
+                index={startIdx}
+                flowType={flowType}
+                canEdit={canEdit}
+                pending={pending}
+                onToggle={() => onToggle(single)}
+                onEdit={() => onEdit(single)}
+                onDelete={() => onDelete(single)}
+              />
+            </li>
+          );
+        }
+        return (
+          <li key={`g-${gi}`}>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {group.map((p, j) => (
+                <PhaseCard
+                  key={p.id}
+                  phase={p}
+                  index={startIdx + j}
+                  flowType={flowType}
+                  canEdit={canEdit}
+                  pending={pending}
+                  onToggle={() => onToggle(p)}
+                  onEdit={() => onEdit(p)}
+                  onDelete={() => onDelete(p)}
+                />
+              ))}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function SortablePhaseItem(props: {
+  phase: PhaseRow;
+  index: number;
+  flowType: "continuous" | "non_continuous";
+  canEdit: boolean;
+  pending: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: props.phase.id, disabled: !props.canEdit });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+  return (
+    <li ref={setNodeRef} style={style}>
+      <PhaseCard
+        {...props}
+        dragHandle={
+          props.canEdit ? (
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              aria-label="Mover fase"
+              className="grid h-8 w-8 cursor-grab place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="9" cy="6" r="1.5" />
+                <circle cx="15" cy="6" r="1.5" />
+                <circle cx="9" cy="12" r="1.5" />
+                <circle cx="15" cy="12" r="1.5" />
+                <circle cx="9" cy="18" r="1.5" />
+                <circle cx="15" cy="18" r="1.5" />
+              </svg>
+            </button>
+          ) : null
+        }
+      />
+    </li>
+  );
+}
+
 function PhaseCard({
   phase,
   index,
@@ -215,6 +413,7 @@ function PhaseCard({
   onToggle,
   onEdit,
   onDelete,
+  dragHandle,
 }: {
   phase: PhaseRow;
   index: number;
@@ -224,6 +423,7 @@ function PhaseCard({
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  dragHandle?: React.ReactNode;
 }) {
   const completed = !!phase.completed_at;
   const isOverdue =
@@ -235,9 +435,10 @@ function PhaseCard({
       : "border-slate-200 bg-white";
 
   return (
-    <li
+    <div
       className={`flex flex-col gap-3 rounded-2xl border p-4 transition sm:flex-row sm:items-start ${tone}`}
     >
+      {dragHandle}
       <button
         type="button"
         onClick={onToggle}
@@ -296,7 +497,7 @@ function PhaseCard({
             {isOverdue ? " — vencida" : null}
           </p>
         ) : flowType === "continuous" ? (
-          <p className="text-xs text-slate-400 italic">Sem data — vai pro fim</p>
+          <p className="text-xs italic text-slate-400">Sem data — vai pro fim</p>
         ) : null}
       </div>
 
@@ -320,7 +521,7 @@ function PhaseCard({
           </button>
         </div>
       ) : null}
-    </li>
+    </div>
   );
 }
 

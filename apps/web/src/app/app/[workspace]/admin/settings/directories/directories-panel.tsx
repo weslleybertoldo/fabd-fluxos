@@ -1,11 +1,27 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { createSupabaseBrowserClient } from "@fabd-fluxos/db/browser";
 import {
   createDirectory,
   deleteDirectory,
+  reorderDirectories,
   setDirectoryImageUrl,
   updateDirectory,
 } from "@/lib/actions/directories";
@@ -31,16 +47,47 @@ interface Props {
 export function DirectoriesPanel({
   workspaceId,
   workspaceSlug,
-  directories,
+  directories: initialDirectories,
 }: Props) {
   const router = useRouter();
+  const [directories, setDirectories] = useState<DirectoryRow[]>(initialDirectories);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<DirectoryRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  useEffect(() => {
+    setDirectories(initialDirectories);
+  }, [initialDirectories]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
   function refresh() {
     router.refresh();
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = directories.findIndex((d) => d.id === active.id);
+    const newIndex = directories.findIndex((d) => d.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reordered = arrayMove(directories, oldIndex, newIndex);
+    setDirectories(reordered); // optimistic
+    start(async () => {
+      const r = await reorderDirectories({
+        workspaceSlug,
+        directoryIds: reordered.map((d) => d.id),
+      });
+      if (!r.ok) {
+        setError(r.error);
+        setDirectories(initialDirectories); // rollback
+        return;
+      }
+      refresh();
+    });
   }
 
   function submitCreate(formData: FormData) {
@@ -101,37 +148,33 @@ export function DirectoriesPanel({
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
 
-      <ul className="grid gap-3 sm:grid-cols-2">
-        {directories.map((d) => (
-          <li
-            key={d.id}
-            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4"
-          >
-            <DirectoryThumb directory={d} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold text-slate-900">{d.name}</p>
-              <p className="truncate text-xs text-slate-500">/{d.slug}</p>
-            </div>
-            <div className="flex shrink-0 gap-1">
-              <button
-                type="button"
-                onClick={() => setEditing(d)}
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Editar
-              </button>
-              <button
-                type="button"
-                onClick={() => submitDelete(d)}
-                disabled={pending}
-                className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
-              >
-                Excluir
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <p className="text-xs text-slate-500">
+        Arraste pelo icone <span className="inline-block align-middle">⋮⋮</span>{" "}
+        pra reordenar — a ordem e refletida nos cards do workspace.
+      </p>
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={directories.map((d) => d.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ul className="space-y-2">
+            {directories.map((d) => (
+              <SortableDirectoryRow
+                key={d.id}
+                directory={d}
+                pending={pending}
+                onEdit={() => setEditing(d)}
+                onDelete={() => submitDelete(d)}
+              />
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
 
       {creating ? (
         <Modal onClose={() => !pending && setCreating(false)}>
@@ -296,6 +339,72 @@ function ModalFooter({
         {pending ? "Salvando..." : submitLabel}
       </button>
     </div>
+  );
+}
+
+function SortableDirectoryRow({
+  directory,
+  pending,
+  onEdit,
+  onDelete,
+}: {
+  directory: DirectoryRow;
+  pending: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: directory.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Mover diretoria"
+        className="grid h-9 w-9 cursor-grab place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="9" cy="6" r="1.5" />
+          <circle cx="15" cy="6" r="1.5" />
+          <circle cx="9" cy="12" r="1.5" />
+          <circle cx="15" cy="12" r="1.5" />
+          <circle cx="9" cy="18" r="1.5" />
+          <circle cx="15" cy="18" r="1.5" />
+        </svg>
+      </button>
+      <DirectoryThumb directory={directory} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-semibold text-slate-900">{directory.name}</p>
+        <p className="truncate text-xs text-slate-500">/{directory.slug}</p>
+      </div>
+      <div className="flex shrink-0 gap-1">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Editar
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={pending}
+          className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+        >
+          Excluir
+        </button>
+      </div>
+    </li>
   );
 }
 

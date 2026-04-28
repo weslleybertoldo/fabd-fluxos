@@ -344,6 +344,56 @@ export async function setPhaseCompleted(input: {
   return { ok: true, data: undefined };
 }
 
+/**
+ * Persiste ordem manual: recebe IDs de phases na ordem desejada e atualiza
+ * order_index sequencial. So aplica em fluxo non_continuous (continuous reordena
+ * pela due_date no servidor — UI nao chama isso).
+ */
+export async function reorderPhases(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  flowId: string;
+  phaseIds: string[];
+}): Promise<ActionResult> {
+  const { sb } = await getDb();
+
+  const ctx = await resolveFlowContext(
+    input.workspaceSlug,
+    input.directorySlug,
+    input.projectId,
+    input.flowId,
+  );
+  if (!ctx.ok) return ctx;
+
+  // Atualiza cada phase com seu novo order_index (sequencial 0..N-1)
+  for (let i = 0; i < input.phaseIds.length; i++) {
+    const id = input.phaseIds[i];
+    if (!id) continue;
+    const { error } = await sb
+      .from("phases")
+      .update({ order_index: i, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) return { ok: false, error: `Reorder ${id}: ${error.message}` };
+  }
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "flow",
+    entityId: ctx.flow.id,
+    action: "reorder",
+    changes: { after: { phase_ids: input.phaseIds } },
+    context: { ...pathContext(ctx) },
+  });
+
+  revalidatePath(
+    `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}/${input.flowId}`,
+  );
+  return { ok: true, data: undefined };
+}
+
 export async function deletePhase(input: {
   workspaceSlug: string;
   directorySlug: string;
