@@ -102,7 +102,17 @@ export default async function FlowPage({
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(200);
-  const comments = (commentsData ?? []) as unknown as FlowCommentRow[];
+  const allComments = (commentsData ?? []) as unknown as FlowCommentRow[];
+  // separa: comentarios do FLUXO (phase_id NULL) ficam no painel do fim;
+  // comentarios da FASE (phase_id setado) sao agrupados por fase pro modal.
+  const flowComments = allComments.filter((c) => !c.phase_id);
+  const commentsByPhase: Record<string, FlowCommentRow[]> = {};
+  for (const c of allComments) {
+    if (c.phase_id) {
+      if (!commentsByPhase[c.phase_id]) commentsByPhase[c.phase_id] = [];
+      commentsByPhase[c.phase_id]!.push(c);
+    }
+  }
 
   // Tags do workspace + tags atribuidas a este fluxo
   const { data: tagsData } = await supabase
@@ -332,7 +342,9 @@ export default async function FlowPage({
         fieldsByPhase={fieldsByPhase}
         valueByFieldPhase={valueByFieldPhase}
         responsiblesByPhase={responsiblesByPhase}
+        commentsByPhase={commentsByPhase}
         members={allMembers}
+        currentUserRole={ctx.member.role}
       />
 
       <CommentsPanel
@@ -342,7 +354,7 @@ export default async function FlowPage({
         flowId={flow.id}
         currentUserId={ctx.member.user_id}
         currentUserRole={ctx.member.role}
-        comments={comments}
+        comments={flowComments}
         authors={Object.fromEntries(
           allMembers.map((m) => [m.user_id, m]),
         )}

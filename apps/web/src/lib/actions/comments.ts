@@ -131,7 +131,7 @@ export async function createComment(input: {
   projectId: string;
   flowId: string;
   content: string;
-  contextPhaseId?: string | null;
+  phaseId?: string | null;
 }): Promise<ActionResult<{ commentId: string }>> {
   const { sb, userId } = await getDb();
   if (!userId) return { ok: false, error: "Nao autenticado" };
@@ -154,7 +154,7 @@ export async function createComment(input: {
       flow_id: ctx.flow.id,
       author_id: userId,
       content,
-      context_phase_id: input.contextPhaseId || null,
+      phase_id: input.phaseId || null,
     })
     .select()
     .maybeSingle();

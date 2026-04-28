@@ -95,6 +95,7 @@ export type FlowCommentRow = {
   author_id: string;
   content: string;
   context_phase_id: string | null;
+  phase_id: string | null;
   parent_id: string | null;
   created_at: string;
   updated_at: string;

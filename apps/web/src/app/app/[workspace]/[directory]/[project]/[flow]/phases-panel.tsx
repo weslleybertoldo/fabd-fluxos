@@ -25,10 +25,10 @@ import {
   setPhaseResponsibles,
   updatePhase,
 } from "@/lib/actions/phases";
-import { PhaseAttachments } from "./phase-attachments";
-import { PhaseFields } from "./phase-fields";
+import { PhaseDetailModal } from "./phase-detail-modal";
 import { MemberAvatar } from "@/components/member-avatar";
 import type {
+  FlowCommentRow,
   PhaseAttachmentRow,
   PhaseFieldRow,
   PhaseFieldValueRow,
@@ -55,7 +55,9 @@ interface Props {
   fieldsByPhase: Record<string, PhaseFieldRow[]>;
   valueByFieldPhase: Record<string, PhaseFieldValueRow>;
   responsiblesByPhase: Record<string, string[]>;
+  commentsByPhase: Record<string, FlowCommentRow[]>;
   members: MemberLite[];
+  currentUserRole: string;
 }
 
 export function PhasesPanel({
@@ -72,17 +74,21 @@ export function PhasesPanel({
   fieldsByPhase,
   valueByFieldPhase,
   responsiblesByPhase,
+  commentsByPhase,
   members,
+  currentUserRole,
 }: Props) {
   const router = useRouter();
   const [phases, setPhases] = useState<PhaseRow[]>(initialPhases);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PhaseRow | null>(null);
   const [managingResp, setManagingResp] = useState<PhaseRow | null>(null);
+  const [openDetail, setOpenDetail] = useState<PhaseRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   const memberByUserId = new Map(members.map((m) => [m.user_id, m]));
+  const authorsMap = Object.fromEntries(members.map((m) => [m.user_id, m]));
 
   // Sincroniza quando o servidor manda novas props (apos router.refresh)
   useEffect(() => {
@@ -93,33 +99,9 @@ export function PhasesPanel({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
-  function renderExtras(p: PhaseRow) {
-    return (
-      <div className="space-y-4">
-        <PhaseFields
-          workspaceSlug={workspaceSlug}
-          directorySlug={directorySlug}
-          projectId={projectId}
-          flowId={flowId}
-          phaseId={p.id}
-          canEditFields={canEdit}
-          fields={fieldsByPhase[p.id] ?? []}
-          valueByFieldPhase={valueByFieldPhase}
-        />
-        <PhaseAttachments
-          workspaceSlug={workspaceSlug}
-          directorySlug={directorySlug}
-          projectId={projectId}
-          flowId={flowId}
-          phaseId={p.id}
-          workspaceId={workspaceId}
-          currentUserId={currentUserId}
-          canEditPhase={canEdit}
-          attachments={attachmentsByPhase[p.id] ?? []}
-        />
-      </div>
-    );
-  }
+  // PhaseFields + PhaseAttachments agora vivem dentro do PhaseDetailModal
+  // (clicar no titulo da fase abre o modal). Antes ficavam como acordeao
+  // dentro de cada PhaseCard, mas duplicava com o modal e poluia a lista.
 
   function refresh() {
     router.refresh();
@@ -316,10 +298,13 @@ export function PhasesPanel({
                   onEdit={() => setEditing(p)}
                   onDelete={() => remove(p)}
                   onManageResponsibles={() => setManagingResp(p)}
+                  onOpenDetail={() => setOpenDetail(p)}
                   responsibleUsers={(responsiblesByPhase[p.id] ?? [])
                     .map((uid) => memberByUserId.get(uid))
                     .filter((m): m is MemberLite => !!m)}
-                  extras={renderExtras(p)}
+                  commentsCount={(commentsByPhase[p.id] ?? []).length}
+                  attachmentsCount={(attachmentsByPhase[p.id] ?? []).length}
+                  fieldsCount={(fieldsByPhase[p.id] ?? []).length}
                 />
               ))}
             </ol>
@@ -335,9 +320,12 @@ export function PhasesPanel({
           onEdit={setEditing}
           onDelete={remove}
           onManageResponsibles={setManagingResp}
+          onOpenDetail={setOpenDetail}
           responsiblesByPhase={responsiblesByPhase}
           memberByUserId={memberByUserId}
-          renderExtras={renderExtras}
+          commentsByPhase={commentsByPhase}
+          attachmentsByPhase={attachmentsByPhase}
+          fieldsByPhase={fieldsByPhase}
         />
       )}
 
@@ -377,6 +365,30 @@ export function PhasesPanel({
           error={error}
         />
       ) : null}
+
+      {openDetail ? (
+        <PhaseDetailModal
+          key={`detail-${openDetail.id}`}
+          workspaceSlug={workspaceSlug}
+          directorySlug={directorySlug}
+          projectId={projectId}
+          flowId={flowId}
+          workspaceId={workspaceId}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
+          canEdit={canEdit}
+          phase={openDetail}
+          fields={fieldsByPhase[openDetail.id] ?? []}
+          valueByFieldPhase={valueByFieldPhase}
+          attachments={attachmentsByPhase[openDetail.id] ?? []}
+          comments={commentsByPhase[openDetail.id] ?? []}
+          responsibleUsers={(responsiblesByPhase[openDetail.id] ?? [])
+            .map((uid) => memberByUserId.get(uid))
+            .filter((m): m is MemberLite => !!m)}
+          authors={authorsMap}
+          onClose={() => setOpenDetail(null)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -390,9 +402,12 @@ function ContinuousGroupedList({
   onEdit,
   onDelete,
   onManageResponsibles,
+  onOpenDetail,
   responsiblesByPhase,
   memberByUserId,
-  renderExtras,
+  commentsByPhase,
+  attachmentsByPhase,
+  fieldsByPhase,
 }: {
   phases: PhaseRow[];
   flowType: "continuous" | "non_continuous";
@@ -402,9 +417,12 @@ function ContinuousGroupedList({
   onEdit: (p: PhaseRow) => void;
   onDelete: (p: PhaseRow) => void;
   onManageResponsibles: (p: PhaseRow) => void;
+  onOpenDetail: (p: PhaseRow) => void;
   responsiblesByPhase: Record<string, string[]>;
   memberByUserId: Map<string, MemberLite>;
-  renderExtras?: (p: PhaseRow) => React.ReactNode;
+  commentsByPhase: Record<string, FlowCommentRow[]>;
+  attachmentsByPhase: Record<string, PhaseAttachmentRow[]>;
+  fieldsByPhase: Record<string, PhaseFieldRow[]>;
 }) {
   const respUsers = (p: PhaseRow): MemberLite[] =>
     (responsiblesByPhase[p.id] ?? [])
@@ -446,8 +464,11 @@ function ContinuousGroupedList({
                 onEdit={() => onEdit(single)}
                 onDelete={() => onDelete(single)}
                 onManageResponsibles={() => onManageResponsibles(single)}
+                onOpenDetail={() => onOpenDetail(single)}
                 responsibleUsers={respUsers(single)}
-                extras={renderExtras ? renderExtras(single) : null}
+                commentsCount={(commentsByPhase[single.id] ?? []).length}
+                attachmentsCount={(attachmentsByPhase[single.id] ?? []).length}
+                fieldsCount={(fieldsByPhase[single.id] ?? []).length}
               />
             </li>
           );
@@ -467,8 +488,11 @@ function ContinuousGroupedList({
                   onEdit={() => onEdit(p)}
                   onDelete={() => onDelete(p)}
                   onManageResponsibles={() => onManageResponsibles(p)}
+                  onOpenDetail={() => onOpenDetail(p)}
                   responsibleUsers={respUsers(p)}
-                  extras={renderExtras ? renderExtras(p) : null}
+                  commentsCount={(commentsByPhase[p.id] ?? []).length}
+                  attachmentsCount={(attachmentsByPhase[p.id] ?? []).length}
+                  fieldsCount={(fieldsByPhase[p.id] ?? []).length}
                 />
               ))}
             </div>
@@ -489,8 +513,11 @@ function SortablePhaseItem(props: {
   onEdit: () => void;
   onDelete: () => void;
   onManageResponsibles: () => void;
+  onOpenDetail: () => void;
   responsibleUsers: MemberLite[];
-  extras?: React.ReactNode;
+  commentsCount: number;
+  attachmentsCount: number;
+  fieldsCount: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.phase.id, disabled: !props.canEdit });
@@ -538,9 +565,12 @@ function PhaseCard({
   onEdit,
   onDelete,
   onManageResponsibles,
+  onOpenDetail,
   responsibleUsers,
+  commentsCount,
+  attachmentsCount,
+  fieldsCount,
   dragHandle,
-  extras,
 }: {
   phase: PhaseRow;
   index: number;
@@ -551,9 +581,12 @@ function PhaseCard({
   onEdit: () => void;
   onDelete: () => void;
   onManageResponsibles: () => void;
+  onOpenDetail: () => void;
   responsibleUsers: MemberLite[];
+  commentsCount: number;
+  attachmentsCount: number;
+  fieldsCount: number;
   dragHandle?: React.ReactNode;
-  extras?: React.ReactNode;
 }) {
   const completed = !!phase.completed_at;
   const isOverdue =
@@ -598,13 +631,15 @@ function PhaseCard({
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               #{index + 1}
             </span>
-            <h3
-              className={`text-base font-semibold ${
+            <button
+              type="button"
+              onClick={onOpenDetail}
+              className={`text-left text-base font-semibold transition hover:text-blue-700 hover:underline ${
                 completed ? "text-emerald-900 line-through" : "text-slate-900"
               }`}
             >
               {phase.name}
-            </h3>
+            </button>
             {phase.color ? (
               <span
                 className="h-3 w-3 rounded-full"
@@ -613,6 +648,32 @@ function PhaseCard({
               />
             ) : null}
           </div>
+
+          {commentsCount + attachmentsCount + fieldsCount > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs text-slate-500">
+              {fieldsCount > 0 ? (
+                <CounterChip
+                  icon="fields"
+                  count={fieldsCount}
+                  onClick={onOpenDetail}
+                />
+              ) : null}
+              {attachmentsCount > 0 ? (
+                <CounterChip
+                  icon="attachments"
+                  count={attachmentsCount}
+                  onClick={onOpenDetail}
+                />
+              ) : null}
+              {commentsCount > 0 ? (
+                <CounterChip
+                  icon="comments"
+                  count={commentsCount}
+                  onClick={onOpenDetail}
+                />
+              ) : null}
+            </div>
+          ) : null}
           {phase.description ? (
             <p className="text-sm text-slate-600">{phase.description}</p>
           ) : null}
@@ -684,7 +745,6 @@ function PhaseCard({
         ) : null}
       </div>
 
-      {extras ? <div className="mt-3 border-t border-slate-200 pt-3">{extras}</div> : null}
     </div>
   );
 }
@@ -896,6 +956,60 @@ function PhaseResponsiblesModal({
         </div>
       </form>
     </div>
+  );
+}
+
+function CounterChip({
+  icon,
+  count,
+  onClick,
+}: {
+  icon: "fields" | "attachments" | "comments";
+  count: number;
+  onClick: () => void;
+}) {
+  const labels = {
+    fields: "Campos",
+    attachments: "Anexos",
+    comments: "Comentarios",
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600 hover:bg-slate-200"
+      title={labels[icon]}
+    >
+      <CounterIcon icon={icon} />
+      <span>{count}</span>
+    </button>
+  );
+}
+
+function CounterIcon({ icon }: { icon: "fields" | "attachments" | "comments" }) {
+  if (icon === "fields") {
+    return (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6" />
+        <line x1="8" y1="12" x2="21" y2="12" />
+        <line x1="8" y1="18" x2="21" y2="18" />
+        <line x1="3" y1="6" x2="3.01" y2="6" />
+        <line x1="3" y1="12" x2="3.01" y2="12" />
+        <line x1="3" y1="18" x2="3.01" y2="18" />
+      </svg>
+    );
+  }
+  if (icon === "attachments") {
+    return (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
   );
 }
 
