@@ -4,20 +4,31 @@ import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { MemberAvatar } from "@/components/member-avatar";
 import { ProjectActions } from "./project-actions";
+import { CreateFlowButton } from "./create-flow-button";
 import type {
   DirectoryRow,
+  FlowRow,
   ProjectRow,
   WorkspaceMemberRow,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+const FLOW_STATUS_LABELS: Record<string, string> = {
+  active: "Ativos",
+  archived: "Arquivados",
+  completed: "Concluidos",
+};
+
 export default async function ProjectPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspace: string; directory: string; project: string }>;
+  searchParams: Promise<{ flowStatus?: string }>;
 }) {
   const { workspace: wsSlug, directory: dirSlug, project: projectId } = await params;
+  const { flowStatus: flowStatusParam } = await searchParams;
   const ctx = await requireWorkspaceMember(wsSlug);
 
   const supabase = await createSupabaseServerClient();
@@ -64,6 +75,25 @@ export default async function ProjectPage({
     ctx.member.role === "diretor" && project.created_by === ctx.member.user_id;
   const canEdit = isAdmin || isOwnerDiretor;
   const canDelete = isAdmin;
+  // flw_insert exige admin ou diretor (no proprio workspace) — alinha com policy
+  const canCreateFlow =
+    project.status === "active" &&
+    (ctx.member.role === "admin" || ctx.member.role === "diretor");
+
+  // Carregar fluxos do projeto pelo status pedido (default = active)
+  const flowStatus =
+    flowStatusParam === "archived" || flowStatusParam === "completed"
+      ? flowStatusParam
+      : "active";
+
+  const { data: flowsData } = await supabase
+    .from("flows")
+    .select("*")
+    .eq("project_id", project.id)
+    .eq("status", flowStatus)
+    .order("order_index", { ascending: true })
+    .order("created_at", { ascending: false });
+  const flows = (flowsData ?? []) as unknown as FlowRow[];
 
   return (
     <div className="space-y-8">
@@ -157,17 +187,88 @@ export default async function ProjectPage({
         </Card>
       </section>
 
-      <section>
-        <div className="mb-3 flex items-center justify-between">
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-slate-900">Fluxos</h2>
+          {canCreateFlow ? (
+            <CreateFlowButton
+              workspaceSlug={ctx.workspace.slug}
+              directorySlug={directory.slug}
+              projectId={project.id}
+            />
+          ) : null}
         </div>
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-          <p className="font-medium text-slate-700">Fluxos vem na Fase 5</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Aqui voce vai criar fluxos continuos (cronograma) ou nao continuos (sem ordem),
-            cada um com fases, comentarios, anexos e responsaveis.
-          </p>
-        </div>
+
+        <nav className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm">
+          {(["active", "archived", "completed"] as const).map((s) => {
+            const isActive = s === flowStatus;
+            const base = `/app/${ctx.workspace.slug}/${directory.slug}/${project.id}`;
+            const href = s === "active" ? base : `${base}?flowStatus=${s}`;
+            return (
+              <Link
+                key={s}
+                href={href}
+                className={[
+                  "flex-1 rounded-lg px-3 py-1.5 text-center font-medium transition",
+                  isActive
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-900",
+                ].join(" ")}
+              >
+                {FLOW_STATUS_LABELS[s]}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {flows.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+            <p className="font-medium text-slate-700">
+              {flowStatus === "active"
+                ? "Nenhum fluxo ativo"
+                : flowStatus === "archived"
+                  ? "Nenhum fluxo arquivado"
+                  : "Nenhum fluxo concluido"}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              {!canCreateFlow && flowStatus === "active"
+                ? "Aguardando admin ou diretor criar o primeiro fluxo."
+                : flowStatus === "active"
+                  ? "Use o botao 'Criar fluxo' acima pra comecar."
+                  : null}
+            </p>
+          </div>
+        ) : (
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {flows.map((f) => (
+              <li key={f.id}>
+                <Link
+                  href={`/app/${ctx.workspace.slug}/${directory.slug}/${project.id}/${f.id}`}
+                  className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-base font-semibold text-slate-900">{f.name}</h3>
+                    {f.status === "archived" ? (
+                      <Badge label="Arquivado" tone="slate" />
+                    ) : f.status === "completed" ? (
+                      <Badge label="Concluido" tone="green" />
+                    ) : null}
+                  </div>
+                  {f.description ? (
+                    <p className="mt-1 line-clamp-2 text-sm text-slate-500">
+                      {f.description}
+                    </p>
+                  ) : null}
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-4 text-xs text-slate-500">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+                      {f.type === "continuous" ? "Continuo" : "Nao continuo"}
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
