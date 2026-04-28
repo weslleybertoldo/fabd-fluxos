@@ -158,6 +158,40 @@ export type PhaseFieldValueRow = {
   updated_at: string;
 };
 
+export type ReminderRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  order_index: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SimpleListRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  order_index: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SimpleListItemRow = {
+  id: string;
+  list_id: string;
+  text: string;
+  completed_at: string | null;
+  order_index: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AuditLogRow = {
   id: string;
   workspace_id: string;

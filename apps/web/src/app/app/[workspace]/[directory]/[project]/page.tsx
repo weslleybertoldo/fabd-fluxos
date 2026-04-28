@@ -6,11 +6,15 @@ import { MemberAvatar } from "@/components/member-avatar";
 import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
 import { FlowsBoard } from "./flows-board";
+import { RemindersAndLists } from "./reminders-and-lists";
 import type {
   DirectoryRow,
   FlowRow,
   PhaseRow,
   ProjectRow,
+  ReminderRow,
+  SimpleListItemRow,
+  SimpleListRow,
   WorkspaceMemberRow,
 } from "@/lib/types";
 
@@ -107,6 +111,38 @@ export default async function ProjectPage({
         .order("order_index", { ascending: true })
     : { data: [] };
   const allPhases = (allPhasesData ?? []) as unknown as PhaseRow[];
+
+  // Reminders + simple_lists + items do projeto
+  const { data: remindersData } = await supabase
+    .from("reminders")
+    .select("*")
+    .eq("project_id", project.id)
+    .order("completed_at", { ascending: true, nullsFirst: true })
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  const reminders = (remindersData ?? []) as unknown as ReminderRow[];
+
+  const { data: listsData } = await supabase
+    .from("simple_lists")
+    .select("*")
+    .eq("project_id", project.id)
+    .order("order_index", { ascending: true });
+  const lists = (listsData ?? []) as unknown as SimpleListRow[];
+
+  const listIds = lists.map((l) => l.id);
+  const { data: itemsData } = listIds.length
+    ? await supabase
+        .from("simple_list_items")
+        .select("*")
+        .in("list_id", listIds)
+        .order("order_index", { ascending: true })
+    : { data: [] };
+  const items = (itemsData ?? []) as unknown as SimpleListItemRow[];
+  const itemsByList: Record<string, SimpleListItemRow[]> = {};
+  for (const it of items) {
+    if (!itemsByList[it.list_id]) itemsByList[it.list_id] = [];
+    itemsByList[it.list_id]!.push(it);
+  }
 
   // Agrupar phases por flow_id, aplicando a regra de ordenacao do tipo do flow
   const phasesByFlow = new Map<string, PhaseRow[]>();
@@ -281,6 +317,16 @@ export default async function ProjectPage({
           />
         )}
       </section>
+
+      <RemindersAndLists
+        workspaceSlug={ctx.workspace.slug}
+        directorySlug={directory.slug}
+        projectId={project.id}
+        canCreate={project.status === "active"}
+        reminders={reminders}
+        lists={lists}
+        itemsByList={itemsByList}
+      />
     </div>
   );
 }
