@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
+import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type { DirectoryRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,12 @@ export default async function WorkspaceHomePage({
 
   return (
     <div className="space-y-6">
+      <RealtimeWatcher
+        channelName={`workspace-${ctx.workspace.id}`}
+        subscriptions={[
+          { table: "directories", filter: `workspace_id=eq.${ctx.workspace.id}` },
+        ]}
+      />
       <header>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">{ctx.workspace.name}</h1>
         <p className="mt-2 text-slate-600">

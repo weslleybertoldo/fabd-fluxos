@@ -7,6 +7,7 @@ import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
 import { FlowsBoard } from "./flows-board";
 import { RemindersAndLists } from "./reminders-and-lists";
+import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type {
   DirectoryRow,
   FlowRow,
@@ -164,6 +165,18 @@ export default async function ProjectPage({
 
   return (
     <div className="space-y-8">
+      <RealtimeWatcher
+        channelName={`project-${project.id}`}
+        subscriptions={[
+          { table: "projects", filter: `id=eq.${project.id}` },
+          { table: "flows", filter: `project_id=eq.${project.id}` },
+          { table: "reminders", filter: `project_id=eq.${project.id}` },
+          { table: "simple_lists", filter: `project_id=eq.${project.id}` },
+          // phases/items sem coluna project_id direta — RLS filtra
+          { table: "phases" },
+          { table: "simple_list_items" },
+        ]}
+      />
       <header className="space-y-3">
         <p className="text-sm text-slate-500">
           <Link href={`/app/${ctx.workspace.slug}`} className="hover:text-slate-900">

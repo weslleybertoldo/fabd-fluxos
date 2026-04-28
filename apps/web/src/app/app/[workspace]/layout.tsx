@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { NotificationsBell } from "@/components/notifications-bell";
+import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type { NotificationRow } from "@/lib/types";
 
 export default async function WorkspaceLayout({
@@ -30,6 +31,15 @@ export default async function WorkspaceLayout({
 
   return (
     <div className="space-y-8">
+      <RealtimeWatcher
+        channelName={`notifs-${ctx.workspace.id}-${ctx.member.user_id}`}
+        subscriptions={[
+          {
+            table: "notifications",
+            filter: `user_id=eq.${ctx.member.user_id}`,
+          },
+        ]}
+      />
       <nav className="flex flex-wrap items-center gap-3 border-b border-slate-200 pb-4">
         <Link
           href={`/app/${ctx.workspace.slug}`}

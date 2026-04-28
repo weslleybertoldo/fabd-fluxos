@@ -7,6 +7,7 @@ import { FlowActions } from "./flow-actions";
 import { PhasesPanel } from "./phases-panel";
 import { CommentsPanel } from "./comments-panel";
 import { FlowTagsEditor } from "./flow-tags-editor";
+import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type {
   DirectoryRow,
   FlowCommentRow,
@@ -196,6 +197,20 @@ export default async function FlowPage({
 
   return (
     <div className="space-y-8">
+      <RealtimeWatcher
+        channelName={`flow-${flow.id}`}
+        subscriptions={[
+          { table: "flows", filter: `id=eq.${flow.id}` },
+          { table: "phases", filter: `flow_id=eq.${flow.id}` },
+          { table: "flow_comments", filter: `flow_id=eq.${flow.id}` },
+          { table: "flow_tags", filter: `flow_id=eq.${flow.id}` },
+          // attachments/fields/values nao tem coluna flow_id direta — escutamos todos
+          // do schema e o RLS filtra. Custo extra eh aceitavel.
+          { table: "phase_attachments" },
+          { table: "phase_fields" },
+          { table: "phase_field_values" },
+        ]}
+      />
       <header className="space-y-3">
         <p className="text-sm text-slate-500">
           <Link href={`/app/${ctx.workspace.slug}`} className="hover:text-slate-900">
