@@ -222,7 +222,11 @@ export async function updateDirectory(input: {
         image_url: after.image_url,
       },
     },
-    context: { directory_slug: beforeRow.slug },
+    context: {
+      directory_id: beforeRow.id,
+      directory_slug: beforeRow.slug,
+      directory_name: after.name,
+    },
   });
 
   revalidatePath(`/app/${input.workspaceSlug}`);

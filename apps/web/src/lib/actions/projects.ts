@@ -126,6 +126,8 @@ export async function createProject(input: {
     context: {
       directory_id: ctx.directory.id,
       directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: project.id,
       project_name: project.name,
     },
   });
@@ -199,7 +201,13 @@ export async function updateProject(input: {
         responsible_user_id: after.responsible_user_id,
       },
     },
-    context: { directory_id: ctx.directory.id },
+    context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: input.projectId,
+      project_name: after.name,
+    },
   });
 
   revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}`);
@@ -252,7 +260,13 @@ async function changeStatus(
     entityId: input.projectId,
     action,
     changes: { before: { status: beforeRow.status }, after: { status: newStatus } },
-    context: { project_name: beforeRow.name, directory_id: ctx.directory.id },
+    context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: input.projectId,
+      project_name: beforeRow.name,
+    },
   });
 
   revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}`);
@@ -312,7 +326,13 @@ export async function deleteProject(input: {
     entityId: input.projectId,
     action: "delete",
     changes: { before: { name: beforeRow.name, status: beforeRow.status } },
-    context: { project_name: beforeRow.name, directory_id: ctx.directory.id },
+    context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: input.projectId,
+      project_name: beforeRow.name,
+    },
   });
 
   revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}`);

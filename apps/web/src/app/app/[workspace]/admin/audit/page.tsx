@@ -1,6 +1,12 @@
 import { requireWorkspaceAdmin } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { MemberAvatar } from "@/components/member-avatar";
+import {
+  buildPath,
+  summarizeChanges,
+  translateAction,
+  translateEntity,
+} from "@/lib/audit-format";
 import type { AuditLogRow, WorkspaceMemberRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +28,47 @@ export default async function AuditPage({
     .limit(100);
   const entries = (rows ?? []) as unknown as AuditLogRow[];
 
+  // Lookups pra resolver fallbacks (nome de entidades existentes)
+  const directoryIds = new Set<string>();
+  const projectIds = new Set<string>();
+  const flowIds = new Set<string>();
+  const phaseIds = new Set<string>();
+  for (const e of entries) {
+    if (e.entity === "directory") directoryIds.add(e.entity_id);
+    if (e.entity === "project") projectIds.add(e.entity_id);
+    if (e.entity === "flow") flowIds.add(e.entity_id);
+    if (e.entity === "phase") phaseIds.add(e.entity_id);
+  }
+  const dirsResp = directoryIds.size
+    ? await supabase
+        .from("directories")
+        .select("id, name")
+        .in("id", Array.from(directoryIds))
+    : { data: [] };
+  const prjsResp = projectIds.size
+    ? await supabase
+        .from("projects")
+        .select("id, name")
+        .in("id", Array.from(projectIds))
+    : { data: [] };
+  const flwsResp = flowIds.size
+    ? await supabase.from("flows").select("id, name").in("id", Array.from(flowIds))
+    : { data: [] };
+  const phsResp = phaseIds.size
+    ? await supabase.from("phases").select("id, name").in("id", Array.from(phaseIds))
+    : { data: [] };
+
+  const nameById = new Map<string, string>();
+  for (const r of (dirsResp.data ?? []) as { id: string; name: string }[])
+    nameById.set(r.id, r.name);
+  for (const r of (prjsResp.data ?? []) as { id: string; name: string }[])
+    nameById.set(r.id, r.name);
+  for (const r of (flwsResp.data ?? []) as { id: string; name: string }[])
+    nameById.set(r.id, r.name);
+  for (const r of (phsResp.data ?? []) as { id: string; name: string }[])
+    nameById.set(r.id, r.name);
+
+  // Members pra mostrar foto+nome do autor
   const userIds = Array.from(new Set(entries.map((e) => e.user_id)));
   const { data: memRows } = userIds.length
     ? await supabase
@@ -53,7 +100,13 @@ export default async function AuditPage({
         <ol className="space-y-3">
           {entries.map((e) => {
             const author = memberByUser.get(e.user_id);
-            const summary = describeAuditEntry(e);
+            const path = buildPath(e, ctx.workspace.name, {
+              entityName: nameById.get(e.entity_id) ?? null,
+            });
+            const summary = summarizeChanges(e);
+            const verb = translateAction(e.action);
+            const entityPt = translateEntity(e.entity);
+
             return (
               <li
                 key={e.id}
@@ -66,16 +119,33 @@ export default async function AuditPage({
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-slate-900">
-                    <strong>{author?.google_full_name ?? "Usuario"}</strong> {summary}
+                    <strong>{author?.google_full_name ?? "Usuario"}</strong>{" "}
+                    <span className="text-slate-600">
+                      {verb} {entityPt}
+                    </span>
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {formatDate(e.created_at)} · <code className="rounded bg-slate-100 px-1 py-0.5">{e.entity}</code> · <code className="rounded bg-slate-100 px-1 py-0.5">{e.action}</code>
+                  <p className="mt-1 truncate text-xs font-medium text-slate-700">
+                    {path.map((p, i) => (
+                      <span key={i}>
+                        {i > 0 ? <span className="mx-1.5 text-slate-300">/</span> : null}
+                        <span>{p}</span>
+                      </span>
+                    ))}
                   </p>
-                  {e.changes ? (
-                    <pre className="mt-2 overflow-auto rounded-lg bg-slate-50 p-2 text-xs text-slate-700">
-                      {JSON.stringify(e.changes, null, 2)}
-                    </pre>
+                  {summary ? (
+                    <p className="mt-1 text-sm text-slate-700">{summary}</p>
                   ) : null}
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatDate(e.created_at)}{" "}
+                    <span className="mx-1 text-slate-300">·</span>
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                      {entityPt}
+                    </code>{" "}
+                    <span className="text-slate-300">·</span>{" "}
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                      {verb}
+                    </code>
+                  </p>
                 </div>
               </li>
             );
@@ -84,24 +154,6 @@ export default async function AuditPage({
       )}
     </div>
   );
-}
-
-function describeAuditEntry(entry: AuditLogRow): string {
-  const map: Record<string, string> = {
-    create: "criou",
-    update: "atualizou",
-    delete: "removeu",
-    complete: "concluiu",
-    reorder: "reordenou",
-    approve: "aprovou",
-    block: "bloqueou",
-    change_role: "trocou o papel de",
-    assign: "atribuiu",
-    seed: "iniciou o workspace (seed)",
-    request: "solicitou acesso",
-  };
-  const verb = map[entry.action] ?? entry.action;
-  return `${verb} ${entry.entity}`;
 }
 
 function formatDate(iso: string) {

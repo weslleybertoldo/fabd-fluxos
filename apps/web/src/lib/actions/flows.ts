@@ -138,9 +138,12 @@ export async function createFlow(input: {
     action: "create",
     changes: { after: { name: flow.name, type: flow.type } },
     context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
       project_id: ctx.project.id,
       project_name: ctx.project.name,
-      directory_slug: ctx.directory.slug,
+      flow_id: flow.id,
       flow_name: flow.name,
     },
   });
@@ -212,7 +215,15 @@ export async function updateFlow(input: {
       before: { name: beforeRow.name, description: beforeRow.description, type: beforeRow.type },
       after: { name: after.name, description: after.description, type: after.type },
     },
-    context: { project_id: ctx.project.id },
+    context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: ctx.project.id,
+      project_name: ctx.project.name,
+      flow_id: input.flowId,
+      flow_name: after.name,
+    },
   });
 
   revalidatePath(
@@ -273,7 +284,15 @@ async function changeFlowStatus(
     entityId: input.flowId,
     action,
     changes: { before: { status: beforeRow.status }, after: { status: newStatus } },
-    context: { flow_name: beforeRow.name, project_id: ctx.project.id },
+    context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: ctx.project.id,
+      project_name: ctx.project.name,
+      flow_id: input.flowId,
+      flow_name: beforeRow.name,
+    },
   });
 
   revalidatePath(
@@ -342,7 +361,15 @@ export async function deleteFlow(input: {
     entityId: input.flowId,
     action: "delete",
     changes: { before: { name: beforeRow.name, status: beforeRow.status } },
-    context: { flow_name: beforeRow.name, project_id: ctx.project.id },
+    context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: ctx.project.id,
+      project_name: ctx.project.name,
+      flow_id: input.flowId,
+      flow_name: beforeRow.name,
+    },
   });
 
   revalidatePath(
