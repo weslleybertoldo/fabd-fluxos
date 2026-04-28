@@ -328,6 +328,76 @@ export async function reactivateFlow(input: {
   return changeFlowStatus(input, "active", "reactivate");
 }
 
+/**
+ * Reordena fluxos dentro de um projeto (admin/diretor que pode editar o flow).
+ * Atualiza order_index sequencial pra cada flowId na lista.
+ */
+export async function reorderFlows(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  flowIds: string[];
+}): Promise<ActionResult> {
+  const { supabase, sb } = await getDb();
+  const { data: ws } = await supabase
+    .from("workspaces")
+    .select("*")
+    .eq("slug", input.workspaceSlug)
+    .maybeSingle();
+  const workspace = ws as unknown as WorkspaceRow | null;
+  if (!workspace) return { ok: false, error: "Workspace nao encontrado" };
+
+  const { data: dir } = await supabase
+    .from("directories")
+    .select("*")
+    .eq("workspace_id", workspace.id)
+    .eq("slug", input.directorySlug)
+    .maybeSingle();
+  const directory = dir as unknown as DirectoryRow | null;
+  if (!directory) return { ok: false, error: "Diretoria nao encontrada" };
+
+  const { data: prj } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", input.projectId)
+    .eq("directory_id", directory.id)
+    .maybeSingle();
+  const project = prj as unknown as ProjectRow | null;
+  if (!project) return { ok: false, error: "Projeto nao encontrado" };
+
+  for (let i = 0; i < input.flowIds.length; i++) {
+    const id = input.flowIds[i];
+    if (!id) continue;
+    const { error } = await sb
+      .from("flows")
+      .update({ order_index: i, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) return { ok: false, error: `Reorder ${id}: ${error.message}` };
+  }
+
+  await audit({
+    workspaceId: workspace.id,
+    entity: "project",
+    entityId: project.id,
+    action: "reorder",
+    changes: { after: { flow_ids: input.flowIds } },
+    context: {
+      directory_id: directory.id,
+      directory_slug: directory.slug,
+      directory_name: directory.name,
+      project_id: project.id,
+      project_name: project.name,
+    },
+  });
+
+  revalidatePath(
+    `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}`,
+  );
+  return { ok: true, data: undefined };
+}
+
 export async function deleteFlow(input: {
   workspaceSlug: string;
   directorySlug: string;

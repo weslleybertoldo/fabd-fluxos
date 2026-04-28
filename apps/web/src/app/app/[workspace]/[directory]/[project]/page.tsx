@@ -5,9 +5,11 @@ import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { MemberAvatar } from "@/components/member-avatar";
 import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
+import { FlowsBoard } from "./flows-board";
 import type {
   DirectoryRow,
   FlowRow,
+  PhaseRow,
   ProjectRow,
   WorkspaceMemberRow,
 } from "@/lib/types";
@@ -94,6 +96,35 @@ export default async function ProjectPage({
     .order("order_index", { ascending: true })
     .order("created_at", { ascending: false });
   const flows = (flowsData ?? []) as unknown as FlowRow[];
+
+  // Bulk load phases de todos os flows pra renderizar mini-fases nas colunas
+  const flowIds = flows.map((f) => f.id);
+  const { data: allPhasesData } = flowIds.length
+    ? await supabase
+        .from("phases")
+        .select("*")
+        .in("flow_id", flowIds)
+        .order("order_index", { ascending: true })
+    : { data: [] };
+  const allPhases = (allPhasesData ?? []) as unknown as PhaseRow[];
+
+  // Agrupar phases por flow_id, aplicando a regra de ordenacao do tipo do flow
+  const phasesByFlow = new Map<string, PhaseRow[]>();
+  for (const f of flows) {
+    const list = allPhases.filter((p) => p.flow_id === f.id);
+    if (f.type === "continuous") {
+      list.sort((a, b) => {
+        if (a.due_date && !b.due_date) return -1;
+        if (!a.due_date && b.due_date) return 1;
+        if (a.due_date && b.due_date) {
+          const cmp = a.due_date.localeCompare(b.due_date);
+          if (cmp !== 0) return cmp;
+        }
+        return a.order_index - b.order_index;
+      });
+    }
+    phasesByFlow.set(f.id, list);
+  }
 
   return (
     <div className="space-y-8">
@@ -239,35 +270,15 @@ export default async function ProjectPage({
             </p>
           </div>
         ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {flows.map((f) => (
-              <li key={f.id}>
-                <Link
-                  href={`/app/${ctx.workspace.slug}/${directory.slug}/${project.id}/${f.id}`}
-                  className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-md"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-base font-semibold text-slate-900">{f.name}</h3>
-                    {f.status === "archived" ? (
-                      <Badge label="Arquivado" tone="slate" />
-                    ) : f.status === "completed" ? (
-                      <Badge label="Concluido" tone="green" />
-                    ) : null}
-                  </div>
-                  {f.description ? (
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-                      {f.description}
-                    </p>
-                  ) : null}
-                  <div className="mt-auto flex items-center justify-between gap-2 pt-4 text-xs text-slate-500">
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
-                      {f.type === "continuous" ? "Continuo" : "Nao continuo"}
-                    </span>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <FlowsBoard
+            workspaceSlug={ctx.workspace.slug}
+            directorySlug={directory.slug}
+            projectId={project.id}
+            currentUserId={ctx.member.user_id}
+            currentUserRole={ctx.member.role}
+            flows={flows}
+            phasesByFlow={Object.fromEntries(phasesByFlow)}
+          />
         )}
       </section>
     </div>

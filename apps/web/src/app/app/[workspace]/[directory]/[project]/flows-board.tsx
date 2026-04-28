@@ -1,0 +1,424 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { reorderFlows } from "@/lib/actions/flows";
+import { setPhaseCompleted } from "@/lib/actions/phases";
+import type { FlowRow, PhaseRow } from "@/lib/types";
+
+interface Props {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  currentUserId: string;
+  currentUserRole: string;
+  flows: FlowRow[];
+  phasesByFlow: Record<string, PhaseRow[]>;
+}
+
+export function FlowsBoard({
+  workspaceSlug,
+  directorySlug,
+  projectId,
+  currentUserId,
+  currentUserRole,
+  flows: initialFlows,
+  phasesByFlow,
+}: Props) {
+  const router = useRouter();
+  const [flows, setFlows] = useState<FlowRow[]>(initialFlows);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    setFlows(initialFlows);
+  }, [initialFlows]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  const isAdmin = currentUserRole === "admin";
+
+  function canEditFlow(flow: FlowRow): boolean {
+    if (isAdmin) return true;
+    if (currentUserRole === "diretor" && flow.created_by === currentUserId) return true;
+    return false;
+  }
+
+  // Pra reordenar fluxos: admin pode tudo; diretor so pode se for criador de TODOS
+  // (caso raro). Simplificacao: so admin reordena fluxos do projeto.
+  const canReorder = isAdmin;
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = flows.findIndex((f) => f.id === active.id);
+    const newIndex = flows.findIndex((f) => f.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reordered = arrayMove(flows, oldIndex, newIndex);
+    setFlows(reordered);
+    start(async () => {
+      const r = await reorderFlows({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowIds: reordered.map((f) => f.id),
+      });
+      if (!r.ok) {
+        setError(r.error);
+        setFlows(initialFlows);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function togglePhase(flow: FlowRow, phase: PhaseRow) {
+    if (!canEditFlow(flow)) return;
+    setError(null);
+    start(async () => {
+      const r = await setPhaseCompleted({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId: flow.id,
+        phaseId: phase.id,
+        completed: !phase.completed_at,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      {error ? (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      ) : null}
+
+      {canReorder ? (
+        <p className="text-xs text-slate-500">
+          Arraste pelo cabecalho de cada coluna pra reordenar os fluxos.
+        </p>
+      ) : null}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={canReorder ? handleDragEnd : undefined}
+      >
+        <SortableContext
+          items={flows.map((f) => f.id)}
+          strategy={horizontalListSortingStrategy}
+        >
+          <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-3">
+            {flows.map((flow) => (
+              <SortableFlowColumn
+                key={flow.id}
+                flow={flow}
+                phases={phasesByFlow[flow.id] ?? []}
+                workspaceSlug={workspaceSlug}
+                directorySlug={directorySlug}
+                projectId={projectId}
+                canEdit={canEditFlow(flow)}
+                canReorder={canReorder}
+                pending={pending}
+                onTogglePhase={(p) => togglePhase(flow, p)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}
+
+function SortableFlowColumn(props: {
+  flow: FlowRow;
+  phases: PhaseRow[];
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  canEdit: boolean;
+  canReorder: boolean;
+  pending: boolean;
+  onTogglePhase: (phase: PhaseRow) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: props.flow.id, disabled: !props.canReorder });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex w-80 shrink-0 flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+    >
+      <FlowColumnHeader
+        flow={props.flow}
+        workspaceSlug={props.workspaceSlug}
+        directorySlug={props.directorySlug}
+        projectId={props.projectId}
+        canReorder={props.canReorder}
+        drag={{ attributes, listeners }}
+      />
+      <FlowColumnBody
+        phases={props.phases}
+        canEdit={props.canEdit}
+        pending={props.pending}
+        flowType={props.flow.type}
+        onTogglePhase={props.onTogglePhase}
+      />
+    </div>
+  );
+}
+
+type DragHandleProps = {
+  attributes: ReturnType<typeof useSortable>["attributes"];
+  listeners: ReturnType<typeof useSortable>["listeners"];
+};
+
+function FlowColumnHeader({
+  flow,
+  workspaceSlug,
+  directorySlug,
+  projectId,
+  canReorder,
+  drag,
+}: {
+  flow: FlowRow;
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  canReorder: boolean;
+  drag: DragHandleProps;
+}) {
+  const href = `/app/${workspaceSlug}/${directorySlug}/${projectId}/${flow.id}`;
+  return (
+    <header
+      className={`flex items-start gap-2 rounded-xl bg-white p-3 ${
+        canReorder ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
+      {...(canReorder ? drag.attributes : {})}
+      {...(canReorder && drag.listeners ? drag.listeners : {})}
+    >
+      <div className="min-w-0 flex-1">
+        <Link
+          href={href}
+          className="line-clamp-2 text-sm font-semibold text-slate-900 hover:underline"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {flow.name}
+        </Link>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-600">
+            {flow.type === "continuous" ? "Continuo" : "Nao continuo"}
+          </span>
+          {flow.status === "archived" ? (
+            <Badge label="Arquivado" tone="slate" />
+          ) : flow.status === "completed" ? (
+            <Badge label="Concluido" tone="green" />
+          ) : null}
+        </div>
+      </div>
+      {canReorder ? (
+        <span className="shrink-0 text-slate-300" aria-hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="9" cy="6" r="1.5" />
+            <circle cx="15" cy="6" r="1.5" />
+            <circle cx="9" cy="12" r="1.5" />
+            <circle cx="15" cy="12" r="1.5" />
+            <circle cx="9" cy="18" r="1.5" />
+            <circle cx="15" cy="18" r="1.5" />
+          </svg>
+        </span>
+      ) : null}
+    </header>
+  );
+}
+
+function FlowColumnBody({
+  phases,
+  canEdit,
+  pending,
+  flowType,
+  onTogglePhase,
+}: {
+  phases: PhaseRow[];
+  canEdit: boolean;
+  pending: boolean;
+  flowType: "continuous" | "non_continuous";
+  onTogglePhase: (phase: PhaseRow) => void;
+}) {
+  if (phases.length === 0) {
+    return (
+      <p className="rounded-xl bg-white px-3 py-4 text-center text-xs italic text-slate-400">
+        Sem fases ainda
+      </p>
+    );
+  }
+  const completedCount = phases.filter((p) => p.completed_at).length;
+  const allComplete = completedCount === phases.length;
+  return (
+    <>
+      <div className="flex items-center justify-between text-[11px] text-slate-500">
+        <span>
+          {completedCount}/{phases.length} concluidas
+        </span>
+        {allComplete ? (
+          <span className="font-semibold text-emerald-600">Tudo pronto!</span>
+        ) : null}
+      </div>
+      <ol className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto pr-1">
+        {phases.map((p, i) => (
+          <PhaseMiniCard
+            key={p.id}
+            phase={p}
+            index={i}
+            canEdit={canEdit}
+            pending={pending}
+            flowType={flowType}
+            onToggle={() => onTogglePhase(p)}
+          />
+        ))}
+      </ol>
+    </>
+  );
+}
+
+function PhaseMiniCard({
+  phase,
+  index,
+  canEdit,
+  pending,
+  flowType,
+  onToggle,
+}: {
+  phase: PhaseRow;
+  index: number;
+  canEdit: boolean;
+  pending: boolean;
+  flowType: "continuous" | "non_continuous";
+  onToggle: () => void;
+}) {
+  const completed = !!phase.completed_at;
+  const isOverdue =
+    !completed && phase.due_date && new Date(phase.due_date) < new Date();
+  const tone = completed
+    ? "border-emerald-200 bg-emerald-50"
+    : isOverdue
+      ? "border-red-200 bg-red-50"
+      : "border-slate-200 bg-white";
+  return (
+    <li
+      className={`flex items-start gap-2 rounded-xl border p-2 ${tone}`}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={!canEdit || pending}
+        aria-label={completed ? "Marcar como nao concluida" : "Marcar como concluida"}
+        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition ${
+          completed
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-300 bg-white text-transparent hover:border-emerald-400"
+        } disabled:opacity-50`}
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            #{index + 1}
+          </span>
+          <p
+            className={`truncate text-sm font-medium ${
+              completed ? "text-emerald-900 line-through" : "text-slate-900"
+            }`}
+          >
+            {phase.name}
+          </p>
+        </div>
+        {phase.due_date ? (
+          <p
+            className={`text-[10px] ${
+              isOverdue ? "font-semibold text-red-700" : "text-slate-500"
+            }`}
+          >
+            {formatShortDate(phase.due_date)}
+            {isOverdue ? " · vencida" : null}
+          </p>
+        ) : flowType === "continuous" ? (
+          <p className="text-[10px] italic text-slate-400">Sem data</p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function Badge({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "slate" | "green" | "blue";
+}) {
+  const tones: Record<string, string> = {
+    slate: "bg-slate-100 text-slate-600",
+    green: "bg-emerald-100 text-emerald-700",
+    blue: "bg-blue-100 text-blue-700",
+  };
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${tones[tone]}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function formatShortDate(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const sameYear = d.getFullYear() === today.getFullYear();
+  return d.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    year: sameYear ? undefined : "numeric",
+  });
+}
