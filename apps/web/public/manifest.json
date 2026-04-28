@@ -1,0 +1,19 @@
+{
+  "name": "FABD Fluxos",
+  "short_name": "FABD Fluxos",
+  "description": "Gestao de demandas e processos da Federacao Alagoana de Badminton",
+  "start_url": "/app",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#1e3a8a",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "@fabd-fluxos/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FABD Fluxos — wrapper Electron (Windows)",
+  "main": "main.js",
+  "scripts": {
+    "dev": "cross-env FABD_DEV=1 electron .",
+    "start": "electron .",
+    "build": "electron-builder --win --x64 --publish never",
+    "build:publish": "electron-builder --win --x64 --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "br.com.fabd.fluxos",
+    "productName": "FABD Fluxos",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "weslleybertoldo",
+      "repo": "fabd-fluxos"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "fabd-fluxos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FABD Fluxos — gestao de demandas/processos para federacoes",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @fabd-fluxos/web dev",
+    "build": "pnpm --filter @fabd-fluxos/web build",
+    "start": "pnpm --filter @fabd-fluxos/web start",
+    "lint": "pnpm -r lint",
+    "type-check": "pnpm -r type-check",
+    "desktop:dev": "pnpm --filter @fabd-fluxos/desktop dev",
+    "desktop:build": "pnpm --filter @fabd-fluxos/desktop build",
+    "mobile:sync": "pnpm --filter @fabd-fluxos/mobile sync",
+    "mobile:open": "pnpm --filter @fabd-fluxos/mobile open:android",
+    "db:gen-types": "supabase gen types typescript --project-id nexvflddmubtcizervda --schema public > packages/db/src/database.types.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.0"
+  }
+}
