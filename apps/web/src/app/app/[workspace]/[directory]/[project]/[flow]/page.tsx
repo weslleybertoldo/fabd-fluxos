@@ -175,6 +175,22 @@ export default async function FlowPage({
     valueByFieldPhase[`${v.phase_field_id}__${v.current_phase_id}`] = v;
   }
 
+  // Bulk load phase_responsibles
+  const { data: respData } = phaseIds.length
+    ? await supabase
+        .from("phase_responsibles")
+        .select("phase_id,user_id,assigned_by,assigned_at")
+        .in("phase_id", phaseIds)
+    : { data: [] };
+  const allResponsibles = (respData ?? []) as unknown as Array<
+    import("@/lib/types").PhaseResponsibleRow
+  >;
+  const responsiblesByPhase: Record<string, string[]> = {};
+  for (const r of allResponsibles) {
+    if (!responsiblesByPhase[r.phase_id]) responsiblesByPhase[r.phase_id] = [];
+    responsiblesByPhase[r.phase_id]!.push(r.user_id);
+  }
+
   const { data: membersData } = await supabase
     .from("workspace_members")
     .select("user_id, google_full_name, google_avatar_url, role, status")
@@ -315,6 +331,8 @@ export default async function FlowPage({
         attachmentsByPhase={attachmentsByPhase}
         fieldsByPhase={fieldsByPhase}
         valueByFieldPhase={valueByFieldPhase}
+        responsiblesByPhase={responsiblesByPhase}
+        members={allMembers}
       />
 
       <CommentsPanel

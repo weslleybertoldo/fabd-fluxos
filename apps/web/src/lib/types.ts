@@ -215,6 +215,13 @@ export type NotificationRow = {
   created_at: string;
 };
 
+export type PhaseResponsibleRow = {
+  phase_id: string;
+  user_id: string;
+  assigned_by: string;
+  assigned_at: string;
+};
+
 export type AuditLogRow = {
   id: string;
   workspace_id: string;

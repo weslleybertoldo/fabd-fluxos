@@ -22,16 +22,24 @@ import {
   deletePhase,
   reorderPhases,
   setPhaseCompleted,
+  setPhaseResponsibles,
   updatePhase,
 } from "@/lib/actions/phases";
 import { PhaseAttachments } from "./phase-attachments";
 import { PhaseFields } from "./phase-fields";
+import { MemberAvatar } from "@/components/member-avatar";
 import type {
   PhaseAttachmentRow,
   PhaseFieldRow,
   PhaseFieldValueRow,
   PhaseRow,
+  WorkspaceMemberRow,
 } from "@/lib/types";
+
+type MemberLite = Pick<
+  WorkspaceMemberRow,
+  "user_id" | "google_full_name" | "google_avatar_url"
+>;
 
 interface Props {
   workspaceSlug: string;
@@ -46,6 +54,8 @@ interface Props {
   attachmentsByPhase: Record<string, PhaseAttachmentRow[]>;
   fieldsByPhase: Record<string, PhaseFieldRow[]>;
   valueByFieldPhase: Record<string, PhaseFieldValueRow>;
+  responsiblesByPhase: Record<string, string[]>;
+  members: MemberLite[];
 }
 
 export function PhasesPanel({
@@ -61,13 +71,18 @@ export function PhasesPanel({
   attachmentsByPhase,
   fieldsByPhase,
   valueByFieldPhase,
+  responsiblesByPhase,
+  members,
 }: Props) {
   const router = useRouter();
   const [phases, setPhases] = useState<PhaseRow[]>(initialPhases);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PhaseRow | null>(null);
+  const [managingResp, setManagingResp] = useState<PhaseRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  const memberByUserId = new Map(members.map((m) => [m.user_id, m]));
 
   // Sincroniza quando o servidor manda novas props (apos router.refresh)
   useEffect(() => {
@@ -182,6 +197,27 @@ export function PhasesPanel({
     });
   }
 
+  function submitResponsibles(phase: PhaseRow, formData: FormData) {
+    setError(null);
+    const userIds = formData.getAll("responsibleIds").map(String).filter(Boolean);
+    start(async () => {
+      const r = await setPhaseResponsibles({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId,
+        phaseId: phase.id,
+        userIds,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setManagingResp(null);
+      refresh();
+    });
+  }
+
   function remove(phase: PhaseRow) {
     if (
       !confirm(`Excluir a fase "${phase.name}" e tudo dentro dela? Acao irreversivel.`)
@@ -279,6 +315,10 @@ export function PhasesPanel({
                   onToggle={() => toggleComplete(p)}
                   onEdit={() => setEditing(p)}
                   onDelete={() => remove(p)}
+                  onManageResponsibles={() => setManagingResp(p)}
+                  responsibleUsers={(responsiblesByPhase[p.id] ?? [])
+                    .map((uid) => memberByUserId.get(uid))
+                    .filter((m): m is MemberLite => !!m)}
                   extras={renderExtras(p)}
                 />
               ))}
@@ -294,6 +334,9 @@ export function PhasesPanel({
           onToggle={toggleComplete}
           onEdit={setEditing}
           onDelete={remove}
+          onManageResponsibles={setManagingResp}
+          responsiblesByPhase={responsiblesByPhase}
+          memberByUserId={memberByUserId}
           renderExtras={renderExtras}
         />
       )}
@@ -321,6 +364,19 @@ export function PhasesPanel({
           error={error}
         />
       ) : null}
+
+      {managingResp ? (
+        <PhaseResponsiblesModal
+          key={`resp-${managingResp.id}`}
+          phase={managingResp}
+          members={members}
+          currentIds={responsiblesByPhase[managingResp.id] ?? []}
+          onSubmit={(fd) => submitResponsibles(managingResp, fd)}
+          onClose={() => !pending && setManagingResp(null)}
+          pending={pending}
+          error={error}
+        />
+      ) : null}
     </section>
   );
 }
@@ -333,6 +389,9 @@ function ContinuousGroupedList({
   onToggle,
   onEdit,
   onDelete,
+  onManageResponsibles,
+  responsiblesByPhase,
+  memberByUserId,
   renderExtras,
 }: {
   phases: PhaseRow[];
@@ -342,8 +401,15 @@ function ContinuousGroupedList({
   onToggle: (p: PhaseRow) => void;
   onEdit: (p: PhaseRow) => void;
   onDelete: (p: PhaseRow) => void;
+  onManageResponsibles: (p: PhaseRow) => void;
+  responsiblesByPhase: Record<string, string[]>;
+  memberByUserId: Map<string, MemberLite>;
   renderExtras?: (p: PhaseRow) => React.ReactNode;
 }) {
+  const respUsers = (p: PhaseRow): MemberLite[] =>
+    (responsiblesByPhase[p.id] ?? [])
+      .map((uid) => memberByUserId.get(uid))
+      .filter((m): m is MemberLite => !!m);
   // Agrupa por dia (YYYY-MM-DD); fases sem data ficam cada uma no proprio grupo
   const groups: PhaseRow[][] = [];
   let lastDay: string | null = null;
@@ -379,6 +445,8 @@ function ContinuousGroupedList({
                 onToggle={() => onToggle(single)}
                 onEdit={() => onEdit(single)}
                 onDelete={() => onDelete(single)}
+                onManageResponsibles={() => onManageResponsibles(single)}
+                responsibleUsers={respUsers(single)}
                 extras={renderExtras ? renderExtras(single) : null}
               />
             </li>
@@ -398,6 +466,8 @@ function ContinuousGroupedList({
                   onToggle={() => onToggle(p)}
                   onEdit={() => onEdit(p)}
                   onDelete={() => onDelete(p)}
+                  onManageResponsibles={() => onManageResponsibles(p)}
+                  responsibleUsers={respUsers(p)}
                   extras={renderExtras ? renderExtras(p) : null}
                 />
               ))}
@@ -418,6 +488,8 @@ function SortablePhaseItem(props: {
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onManageResponsibles: () => void;
+  responsibleUsers: MemberLite[];
   extras?: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -465,6 +537,8 @@ function PhaseCard({
   onToggle,
   onEdit,
   onDelete,
+  onManageResponsibles,
+  responsibleUsers,
   dragHandle,
   extras,
 }: {
@@ -476,6 +550,8 @@ function PhaseCard({
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onManageResponsibles: () => void;
+  responsibleUsers: MemberLite[];
   dragHandle?: React.ReactNode;
   extras?: React.ReactNode;
 }) {
@@ -552,10 +628,42 @@ function PhaseCard({
           ) : flowType === "continuous" ? (
             <p className="text-xs italic text-slate-400">Sem data — vai pro fim</p>
           ) : null}
+
+          {responsibleUsers.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Responsaveis:
+              </span>
+              {responsibleUsers.map((u) => (
+                <span
+                  key={u.user_id}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                  title={u.google_full_name ?? u.user_id}
+                >
+                  <MemberAvatar
+                    name={u.google_full_name}
+                    avatarUrl={u.google_avatar_url}
+                    size="sm"
+                  />
+                  <span className="truncate max-w-[120px]">
+                    {u.google_full_name ?? u.user_id.slice(0, 8)}
+                  </span>
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {canEdit ? (
-          <div className="flex shrink-0 gap-1">
+          <div className="flex shrink-0 flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={onManageResponsibles}
+              disabled={pending}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Responsaveis
+            </button>
             <button
               type="button"
               onClick={onEdit}
@@ -685,6 +793,105 @@ function PhaseModal({
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
           >
             {pending ? "Salvando..." : submitLabel}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PhaseResponsiblesModal({
+  phase,
+  members,
+  currentIds,
+  onSubmit,
+  onClose,
+  pending,
+  error,
+}: {
+  phase: PhaseRow;
+  members: MemberLite[];
+  currentIds: string[];
+  onSubmit: (formData: FormData) => void;
+  onClose: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  const initial = new Set(currentIds);
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 px-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !pending) onClose();
+      }}
+    >
+      <form
+        action={onSubmit}
+        className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl"
+      >
+        <header className="space-y-1">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Responsaveis pela fase
+          </h2>
+          <p className="text-sm text-slate-500 truncate">{phase.name}</p>
+        </header>
+
+        <p className="text-xs text-slate-500">
+          Marque os membros que sao responsaveis. Cada um recebe notificacao ao ser adicionado.
+        </p>
+
+        {members.length === 0 ? (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            Nenhum membro ativo no workspace.
+          </p>
+        ) : (
+          <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2">
+            {members.map((m) => (
+              <label
+                key={m.user_id}
+                className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  name="responsibleIds"
+                  value={m.user_id}
+                  defaultChecked={initial.has(m.user_id)}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                <MemberAvatar
+                  name={m.google_full_name}
+                  avatarUrl={m.google_avatar_url}
+                  size="sm"
+                />
+                <span className="flex-1 text-sm text-slate-800">
+                  {m.google_full_name ?? m.user_id}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {error ? (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        ) : null}
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {pending ? "Salvando..." : "Salvar"}
           </button>
         </div>
       </form>

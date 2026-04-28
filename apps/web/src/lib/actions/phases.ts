@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { audit } from "./audit";
+import { notify } from "./notifications";
 import type {
   DirectoryRow,
   FlowRow,
   PhaseRow,
+  PhaseResponsibleRow,
   ProjectRow,
   WorkspaceRow,
 } from "../types";
@@ -37,7 +39,13 @@ type Sb = {
       };
     };
     delete(): {
-      eq(col: string, val: string): Promise<{ error: { message: string } | null }>;
+      eq(col: string, val: string):
+        & Promise<{ error: { message: string } | null }>
+        & {
+          eq(col2: string, val2: string): Promise<{
+            error: { message: string } | null;
+          }>;
+        };
     };
   };
 };
@@ -454,6 +462,108 @@ export async function reorderPhases(input: {
     changes: { after: { phase_ids: input.phaseIds } },
     context: { ...pathContext(ctx) },
   });
+
+  revalidatePath(
+    `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}/${input.flowId}`,
+  );
+  return { ok: true, data: undefined };
+}
+
+export async function setPhaseResponsibles(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  flowId: string;
+  phaseId: string;
+  userIds: string[]; // novo set completo (substitui anterior)
+}): Promise<ActionResult> {
+  const { supabase, sb, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+
+  const ctx = await resolveFlowContext(
+    input.workspaceSlug,
+    input.directorySlug,
+    input.projectId,
+    input.flowId,
+  );
+  if (!ctx.ok) return ctx;
+
+  const { data: phase } = await supabase
+    .from("phases")
+    .select("id,name,flow_id")
+    .eq("id", input.phaseId)
+    .maybeSingle();
+  const phaseRow = phase as unknown as PhaseRow | null;
+  if (!phaseRow) return { ok: false, error: "Fase nao encontrada" };
+  if (phaseRow.flow_id !== input.flowId)
+    return { ok: false, error: "Fase nao pertence ao fluxo" };
+
+  const { data: existingData } = await supabase
+    .from("phase_responsibles")
+    .select("user_id")
+    .eq("phase_id", input.phaseId);
+  const existing = ((existingData ?? []) as unknown as Pick<
+    PhaseResponsibleRow,
+    "user_id"
+  >[]).map((r) => r.user_id);
+
+  const desired = Array.from(new Set(input.userIds.filter(Boolean)));
+  const toAdd = desired.filter((u) => !existing.includes(u));
+  const toRemove = existing.filter((u) => !desired.includes(u));
+
+  for (const uid of toRemove) {
+    const { error } = await sb
+      .from("phase_responsibles")
+      .delete()
+      .eq("phase_id", input.phaseId)
+      .eq("user_id", uid);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  for (const uid of toAdd) {
+    const { error } = await sb
+      .from("phase_responsibles")
+      .insert({
+        phase_id: input.phaseId,
+        user_id: uid,
+        assigned_by: userId,
+      })
+      .select()
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message };
+  }
+
+  if (toAdd.length > 0 || toRemove.length > 0) {
+    await audit({
+      workspaceId: ctx.workspace.id,
+      entity: "phase",
+      entityId: input.phaseId,
+      action: "update",
+      changes: {
+        before: { responsibles: existing },
+        after: { responsibles: desired },
+      },
+      context: {
+        ...pathContext(ctx),
+        phase_id: input.phaseId,
+        phase_name: phaseRow.name,
+      },
+    });
+  }
+
+  for (const uid of toAdd) {
+    if (uid === userId) continue;
+    await notify({
+      targetUserId: uid,
+      workspaceId: ctx.workspace.id,
+      type: "responsible_assigned",
+      title: `Voce foi designado responsavel por uma fase`,
+      body: `Fase "${phaseRow.name}" do fluxo ${ctx.flow.name}.`,
+      entity: "phase",
+      entityId: input.phaseId,
+      link: `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}/${input.flowId}`,
+    });
+  }
 
   revalidatePath(
     `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}/${input.flowId}`,
