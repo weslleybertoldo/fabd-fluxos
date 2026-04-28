@@ -75,6 +75,20 @@ export type FlowRow = {
   completed_at: string | null;
 };
 
+export type PhaseRow = {
+  id: string;
+  flow_id: string;
+  name: string;
+  description: string | null;
+  order_index: number;
+  due_date: string | null;
+  completed_at: string | null;
+  color: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AuditLogRow = {
   id: string;
   workspace_id: string;

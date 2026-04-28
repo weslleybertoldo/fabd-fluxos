@@ -4,9 +4,11 @@ import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { MemberAvatar } from "@/components/member-avatar";
 import { FlowActions } from "./flow-actions";
+import { PhasesPanel } from "./phases-panel";
 import type {
   DirectoryRow,
   FlowRow,
+  PhaseRow,
   ProjectRow,
   WorkspaceMemberRow,
 } from "@/lib/types";
@@ -59,6 +61,33 @@ export default async function FlowPage({
     .maybeSingle();
   const flow = flw as unknown as FlowRow | null;
   if (!flow) notFound();
+
+  // Carregar fases — ordenacao depende do tipo do fluxo:
+  //  continuous: por due_date asc (sem data vai pro fim) e order_index como tiebreak
+  //  non_continuous: por order_index asc (drag-drop manual)
+  const { data: phData } = await supabase
+    .from("phases")
+    .select("*")
+    .eq("flow_id", flow.id)
+    .order("order_index", { ascending: true });
+  const allPhases = (phData ?? []) as unknown as PhaseRow[];
+
+  const phases =
+    flow.type === "continuous"
+      ? [...allPhases].sort((a, b) => {
+          // sem due_date vai pro fim
+          if (a.due_date && !b.due_date) return -1;
+          if (!a.due_date && b.due_date) return 1;
+          if (a.due_date && b.due_date) {
+            const cmp = a.due_date.localeCompare(b.due_date);
+            if (cmp !== 0) return cmp;
+          }
+          return a.order_index - b.order_index;
+        })
+      : allPhases;
+
+  const completedCount = phases.filter((p) => p.completed_at).length;
+  const allComplete = phases.length > 0 && completedCount === phases.length;
 
   const { data: membersData } = await supabase
     .from("workspace_members")
@@ -151,18 +180,26 @@ export default async function FlowPage({
         </div>
       </header>
 
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Fases</h2>
-        </div>
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-          <p className="font-medium text-slate-700">Fases vem na proxima sub-fase</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Aqui as fases vao empilhar verticalmente, com checkboxes, comentarios,
-            anexos e datas. Fluxo continuo reordena pela data; nao-continuo permite drag.
+      {allComplete ? (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+          <p className="text-2xl font-bold text-emerald-700">
+            Parabens — fluxo concluido!
           </p>
-        </div>
-      </section>
+          <p className="mt-1 text-sm text-emerald-700/80">
+            Todas as {phases.length} fases foram marcadas como concluidas.
+          </p>
+        </section>
+      ) : null}
+
+      <PhasesPanel
+        workspaceSlug={ctx.workspace.slug}
+        directorySlug={directory.slug}
+        projectId={project.id}
+        flowId={flow.id}
+        flowType={flow.type}
+        canEdit={canEdit}
+        phases={phases}
+      />
     </div>
   );
 }
