@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { audit } from "./audit";
+import { notify } from "./notifications";
 import type { ProjectRow, DirectoryRow, WorkspaceRow } from "../types";
 
 type ActionResult<T = void> =
@@ -132,6 +133,20 @@ export async function createProject(input: {
     },
   });
 
+  // Notifica responsavel se foi atribuido alguem
+  if (project.responsible_user_id && project.responsible_user_id !== userId) {
+    await notify({
+      targetUserId: project.responsible_user_id,
+      workspaceId: ctx.workspace.id,
+      type: "responsible_assigned",
+      title: `Voce foi designado como responsavel`,
+      body: `Projeto "${project.name}" em ${ctx.directory.name}.`,
+      entity: "project",
+      entityId: project.id,
+      link: `/app/${input.workspaceSlug}/${input.directorySlug}/${project.id}`,
+    });
+  }
+
   revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}`);
   return { ok: true, data: { projectId: project.id } };
 }
@@ -209,6 +224,24 @@ export async function updateProject(input: {
       project_name: after.name,
     },
   });
+
+  // Notifica novo responsavel se mudou
+  if (
+    input.responsibleUserId !== undefined &&
+    input.responsibleUserId !== beforeRow.responsible_user_id &&
+    input.responsibleUserId
+  ) {
+    await notify({
+      targetUserId: input.responsibleUserId,
+      workspaceId: ctx.workspace.id,
+      type: "responsible_assigned",
+      title: `Voce foi designado como responsavel`,
+      body: `Projeto "${after.name}" em ${ctx.directory.name}.`,
+      entity: "project",
+      entityId: input.projectId,
+      link: `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}`,
+    });
+  }
 
   revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}`);
   revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}`);

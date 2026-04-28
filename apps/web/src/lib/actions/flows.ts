@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { audit } from "./audit";
+import { notify } from "./notifications";
 import type { FlowRow, ProjectRow, DirectoryRow, WorkspaceRow } from "../types";
 
 type ActionResult<T = void> =
@@ -294,6 +295,20 @@ async function changeFlowStatus(
       flow_name: beforeRow.name,
     },
   });
+
+  // Quando concluir um fluxo, notifica responsavel do projeto
+  if (action === "complete" && ctx.project.responsible_user_id) {
+    await notify({
+      targetUserId: ctx.project.responsible_user_id,
+      workspaceId: ctx.workspace.id,
+      type: "flow_completed",
+      title: `Fluxo "${beforeRow.name}" concluido`,
+      body: `Projeto: ${ctx.project.name}`,
+      entity: "flow",
+      entityId: input.flowId,
+      link: `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}/${input.flowId}`,
+    });
+  }
 
   revalidatePath(
     `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}`,

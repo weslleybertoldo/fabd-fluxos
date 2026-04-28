@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import type { WorkspaceRole } from "@fabd-fluxos/db";
 import { audit } from "./audit";
+import { notify } from "./notifications";
 import type { WorkspaceMemberRow } from "../types";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -92,6 +93,29 @@ export async function requestMembership(slug: string): Promise<ActionResult> {
     context: { workspace_slug: slug },
   });
 
+  // Notifica todos os admins do workspace pra liberar
+  const { data: admins } = await supabase
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", workspaceId)
+    .eq("role", "admin")
+    .eq("status", "active");
+  const adminIds = ((admins ?? []) as unknown as { user_id: string }[]).map(
+    (a) => a.user_id,
+  );
+  for (const adminId of adminIds) {
+    await notify({
+      targetUserId: adminId,
+      workspaceId,
+      type: "member_request",
+      title: `Novo pedido de acesso`,
+      body: `${userMeta.fullName ?? "Alguem"} solicitou acesso ao workspace.`,
+      entity: "member",
+      entityId: userId,
+      link: `/app/${slug}/admin/settings/members`,
+    });
+  }
+
   revalidatePath("/app");
   return { ok: true };
 }
@@ -138,6 +162,24 @@ export async function approveMember(
       after: { role: updated.role, status: updated.status },
     },
     context: { member_name: updated.google_full_name },
+  });
+
+  // Notifica o user aprovado
+  const { data: ws } = await supabase
+    .from("workspaces")
+    .select("slug, name")
+    .eq("id", workspaceId)
+    .maybeSingle();
+  const wsRow = ws as unknown as { slug: string; name: string } | null;
+  await notify({
+    targetUserId: updated.user_id,
+    workspaceId,
+    type: "member_approved",
+    title: `Acesso liberado em ${wsRow?.name ?? "workspace"}`,
+    body: `Voce agora tem o papel "${updated.role}".`,
+    entity: "workspace",
+    entityId: workspaceId,
+    link: wsRow?.slug ? `/app/${wsRow.slug}` : null,
   });
 
   revalidatePath(`/app`);

@@ -192,6 +192,29 @@ export type SimpleListItemRow = {
   updated_at: string;
 };
 
+export type NotificationType =
+  | "phase_due_soon"
+  | "phase_overdue"
+  | "flow_completed"
+  | "mention"
+  | "member_request"
+  | "member_approved"
+  | "responsible_assigned";
+
+export type NotificationRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  entity: EntityType | null;
+  entity_id: string | null;
+  link: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
 export type AuditLogRow = {
   id: string;
   workspace_id: string;
