@@ -322,6 +322,73 @@ export async function setPhaseCompleted(input: {
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "Sem permissao" };
 
+  // Mobile fields transition: ao concluir, mover phase_field_values com fields
+  // mode=mobile pra current_phase_id da PROXIMA fase nao-concluida.
+  if (input.completed) {
+    const { data: phasesAll } = await supabase
+      .from("phases")
+      .select("*")
+      .eq("flow_id", ctx.flow.id);
+    const allPhases = (phasesAll ?? []) as unknown as PhaseRow[];
+    let nextPhase: PhaseRow | null = null;
+    if (ctx.flow.type === "continuous") {
+      const sorted = [...allPhases].sort((a, b) => {
+        if (a.due_date && !b.due_date) return -1;
+        if (!a.due_date && b.due_date) return 1;
+        if (a.due_date && b.due_date) {
+          const cmp = a.due_date.localeCompare(b.due_date);
+          if (cmp !== 0) return cmp;
+        }
+        return a.order_index - b.order_index;
+      });
+      const idx = sorted.findIndex((p) => p.id === input.phaseId);
+      nextPhase = sorted.slice(idx + 1).find((p) => !p.completed_at) ?? null;
+    } else {
+      const sorted = [...allPhases].sort((a, b) => a.order_index - b.order_index);
+      const idx = sorted.findIndex((p) => p.id === input.phaseId);
+      nextPhase = sorted.slice(idx + 1).find((p) => !p.completed_at) ?? null;
+    }
+
+    if (nextPhase) {
+      // Mobile fields originados desta fase
+      const { data: mobileFields } = await supabase
+        .from("phase_fields")
+        .select("id")
+        .eq("mode", "mobile");
+      const mobileFieldIds = (
+        (mobileFields ?? []) as unknown as { id: string }[]
+      ).map((f) => f.id);
+
+      if (mobileFieldIds.length > 0) {
+        // Move values: current_phase_id = nextPhase.id, so dos mobile fields que
+        // atualmente vivem na fase concluida.
+        type SbUpdate2 = {
+          from: (t: string) => {
+            update: (v: Record<string, unknown>) => {
+              eq: (
+                c: string,
+                v: string,
+              ) => {
+                in: (
+                  c: string,
+                  vs: string[],
+                ) => Promise<{ error: { message: string } | null }>;
+              };
+            };
+          };
+        };
+        await (supabase as unknown as SbUpdate2)
+          .from("phase_field_values")
+          .update({
+            current_phase_id: nextPhase.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("current_phase_id", input.phaseId)
+          .in("phase_field_id", mobileFieldIds);
+      }
+    }
+  }
+
   await audit({
     workspaceId: ctx.workspace.id,
     entity: "phase",

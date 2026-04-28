@@ -89,6 +89,75 @@ export type PhaseRow = {
   updated_at: string;
 };
 
+export type FlowCommentRow = {
+  id: string;
+  flow_id: string;
+  author_id: string;
+  content: string;
+  context_phase_id: string | null;
+  parent_id: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type PhaseAttachmentRow = {
+  id: string;
+  phase_id: string;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  storage_path: string;
+  storage_bucket: string;
+  uploaded_by: string;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type TagRow = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  color: string;
+  created_by: string;
+  created_at: string;
+};
+
+export type FlowTagRow = {
+  flow_id: string;
+  tag_id: string;
+  added_by: string;
+  added_at: string;
+};
+
+export type FieldType = "text" | "textarea" | "checkbox" | "number" | "date";
+export type FieldMode = "fixed" | "mobile";
+
+export type PhaseFieldRow = {
+  id: string;
+  phase_id: string;
+  type: FieldType;
+  label: string;
+  mode: FieldMode;
+  order_index: number;
+  required: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PhaseFieldValueRow = {
+  id: string;
+  phase_field_id: string;
+  current_phase_id: string;
+  value_text: string | null;
+  value_bool: boolean | null;
+  value_number: number | null;
+  value_date: string | null;
+  updated_by: string;
+  updated_at: string;
+};
+
 export type AuditLogRow = {
   id: string;
   workspace_id: string;

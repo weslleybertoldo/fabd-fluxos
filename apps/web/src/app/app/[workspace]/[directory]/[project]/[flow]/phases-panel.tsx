@@ -24,7 +24,14 @@ import {
   setPhaseCompleted,
   updatePhase,
 } from "@/lib/actions/phases";
-import type { PhaseRow } from "@/lib/types";
+import { PhaseAttachments } from "./phase-attachments";
+import { PhaseFields } from "./phase-fields";
+import type {
+  PhaseAttachmentRow,
+  PhaseFieldRow,
+  PhaseFieldValueRow,
+  PhaseRow,
+} from "@/lib/types";
 
 interface Props {
   workspaceSlug: string;
@@ -33,7 +40,12 @@ interface Props {
   flowId: string;
   flowType: "continuous" | "non_continuous";
   canEdit: boolean;
+  currentUserId: string;
+  workspaceId: string;
   phases: PhaseRow[];
+  attachmentsByPhase: Record<string, PhaseAttachmentRow[]>;
+  fieldsByPhase: Record<string, PhaseFieldRow[]>;
+  valueByFieldPhase: Record<string, PhaseFieldValueRow>;
 }
 
 export function PhasesPanel({
@@ -43,7 +55,12 @@ export function PhasesPanel({
   flowId,
   flowType,
   canEdit,
+  currentUserId,
+  workspaceId,
   phases: initialPhases,
+  attachmentsByPhase,
+  fieldsByPhase,
+  valueByFieldPhase,
 }: Props) {
   const router = useRouter();
   const [phases, setPhases] = useState<PhaseRow[]>(initialPhases);
@@ -60,6 +77,34 @@ export function PhasesPanel({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
+
+  function renderExtras(p: PhaseRow) {
+    return (
+      <div className="space-y-4">
+        <PhaseFields
+          workspaceSlug={workspaceSlug}
+          directorySlug={directorySlug}
+          projectId={projectId}
+          flowId={flowId}
+          phaseId={p.id}
+          canEditFields={canEdit}
+          fields={fieldsByPhase[p.id] ?? []}
+          valueByFieldPhase={valueByFieldPhase}
+        />
+        <PhaseAttachments
+          workspaceSlug={workspaceSlug}
+          directorySlug={directorySlug}
+          projectId={projectId}
+          flowId={flowId}
+          phaseId={p.id}
+          workspaceId={workspaceId}
+          currentUserId={currentUserId}
+          canEditPhase={canEdit}
+          attachments={attachmentsByPhase[p.id] ?? []}
+        />
+      </div>
+    );
+  }
 
   function refresh() {
     router.refresh();
@@ -234,6 +279,7 @@ export function PhasesPanel({
                   onToggle={() => toggleComplete(p)}
                   onEdit={() => setEditing(p)}
                   onDelete={() => remove(p)}
+                  extras={renderExtras(p)}
                 />
               ))}
             </ol>
@@ -248,6 +294,7 @@ export function PhasesPanel({
           onToggle={toggleComplete}
           onEdit={setEditing}
           onDelete={remove}
+          renderExtras={renderExtras}
         />
       )}
 
@@ -286,6 +333,7 @@ function ContinuousGroupedList({
   onToggle,
   onEdit,
   onDelete,
+  renderExtras,
 }: {
   phases: PhaseRow[];
   flowType: "continuous" | "non_continuous";
@@ -294,6 +342,7 @@ function ContinuousGroupedList({
   onToggle: (p: PhaseRow) => void;
   onEdit: (p: PhaseRow) => void;
   onDelete: (p: PhaseRow) => void;
+  renderExtras?: (p: PhaseRow) => React.ReactNode;
 }) {
   // Agrupa por dia (YYYY-MM-DD); fases sem data ficam cada uma no proprio grupo
   const groups: PhaseRow[][] = [];
@@ -330,6 +379,7 @@ function ContinuousGroupedList({
                 onToggle={() => onToggle(single)}
                 onEdit={() => onEdit(single)}
                 onDelete={() => onDelete(single)}
+                extras={renderExtras ? renderExtras(single) : null}
               />
             </li>
           );
@@ -348,6 +398,7 @@ function ContinuousGroupedList({
                   onToggle={() => onToggle(p)}
                   onEdit={() => onEdit(p)}
                   onDelete={() => onDelete(p)}
+                  extras={renderExtras ? renderExtras(p) : null}
                 />
               ))}
             </div>
@@ -367,6 +418,7 @@ function SortablePhaseItem(props: {
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  extras?: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.phase.id, disabled: !props.canEdit });
@@ -414,6 +466,7 @@ function PhaseCard({
   onEdit,
   onDelete,
   dragHandle,
+  extras,
 }: {
   phase: PhaseRow;
   index: number;
@@ -424,6 +477,7 @@ function PhaseCard({
   onEdit: () => void;
   onDelete: () => void;
   dragHandle?: React.ReactNode;
+  extras?: React.ReactNode;
 }) {
   const completed = !!phase.completed_at;
   const isOverdue =
@@ -435,92 +489,94 @@ function PhaseCard({
       : "border-slate-200 bg-white";
 
   return (
-    <div
-      className={`flex flex-col gap-3 rounded-2xl border p-4 transition sm:flex-row sm:items-start ${tone}`}
-    >
-      {dragHandle}
-      <button
-        type="button"
-        onClick={onToggle}
-        disabled={!canEdit || pending}
-        aria-label={completed ? "Marcar como nao concluida" : "Marcar como concluida"}
-        className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 transition ${
-          completed
-            ? "border-emerald-500 bg-emerald-500 text-white"
-            : "border-slate-300 bg-white text-transparent hover:border-emerald-400"
-        } disabled:opacity-50`}
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+    <div className={`rounded-2xl border p-4 transition ${tone}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        {dragHandle}
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={!canEdit || pending}
+          aria-label={completed ? "Marcar como nao concluida" : "Marcar como concluida"}
+          className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 transition ${
+            completed
+              ? "border-emerald-500 bg-emerald-500 text-white"
+              : "border-slate-300 bg-white text-transparent hover:border-emerald-400"
+          } disabled:opacity-50`}
         >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      </button>
-
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            #{index + 1}
-          </span>
-          <h3
-            className={`text-base font-semibold ${
-              completed ? "text-emerald-900 line-through" : "text-slate-900"
-            }`}
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            {phase.name}
-          </h3>
-          {phase.color ? (
-            <span
-              className="h-3 w-3 rounded-full"
-              style={{ backgroundColor: phase.color }}
-              title={phase.color}
-            />
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </button>
+
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              #{index + 1}
+            </span>
+            <h3
+              className={`text-base font-semibold ${
+                completed ? "text-emerald-900 line-through" : "text-slate-900"
+              }`}
+            >
+              {phase.name}
+            </h3>
+            {phase.color ? (
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: phase.color }}
+                title={phase.color}
+              />
+            ) : null}
+          </div>
+          {phase.description ? (
+            <p className="text-sm text-slate-600">{phase.description}</p>
+          ) : null}
+          {phase.due_date ? (
+            <p
+              className={`text-xs ${
+                isOverdue ? "font-semibold text-red-700" : "text-slate-500"
+              }`}
+            >
+              Vencimento: {formatDate(phase.due_date)}
+              {isOverdue ? " — vencida" : null}
+            </p>
+          ) : flowType === "continuous" ? (
+            <p className="text-xs italic text-slate-400">Sem data — vai pro fim</p>
           ) : null}
         </div>
-        {phase.description ? (
-          <p className="text-sm text-slate-600">{phase.description}</p>
-        ) : null}
-        {phase.due_date ? (
-          <p
-            className={`text-xs ${
-              isOverdue ? "font-semibold text-red-700" : "text-slate-500"
-            }`}
-          >
-            Vencimento: {formatDate(phase.due_date)}
-            {isOverdue ? " — vencida" : null}
-          </p>
-        ) : flowType === "continuous" ? (
-          <p className="text-xs italic text-slate-400">Sem data — vai pro fim</p>
+
+        {canEdit ? (
+          <div className="flex shrink-0 gap-1">
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={pending}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={pending}
+              className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              Excluir
+            </button>
+          </div>
         ) : null}
       </div>
 
-      {canEdit ? (
-        <div className="flex shrink-0 gap-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            disabled={pending}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Editar
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={pending}
-            className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-          >
-            Excluir
-          </button>
-        </div>
-      ) : null}
+      {extras ? <div className="mt-3 border-t border-slate-200 pt-3">{extras}</div> : null}
     </div>
   );
 }
