@@ -15,7 +15,9 @@ interface ReleaseInfo {
   published_at: string;
 }
 
-const RELEASE_API = "https://api.github.com/repos/weslleybertoldo/fabd-fluxos/releases/latest";
+// Proxy server-side em /api/latest-release usa GITHUB_TOKEN pra
+// autenticar (repo eh privado — chamada direta a api.github.com da 404).
+const RELEASE_API = "/api/latest-release";
 
 export function UpdatesPanel({ webVersion }: Props) {
   const [platform, setPlatform] = useState<Platform>("web");
@@ -57,22 +59,23 @@ export function UpdatesPanel({ webVersion }: Props) {
             setDesktopMsg(
               "Esta versao do app nao tem atualizacao automatica. Baixe a versao mais recente manualmente.",
             );
-            // ainda fazemos fetch no GitHub Releases pra mostrar link
+            // ainda fazemos fetch pra mostrar link
             const r = await fetch(RELEASE_API);
             if (r.ok) setRelease(await r.json());
             return;
           }
           const result = await api.checkForUpdates();
           setDesktopMsg(result.message ?? `Status: ${result.status}`);
+          // Tambem pega info do release pra mostrar links (download manual)
+          const r = await fetch(RELEASE_API);
+          if (r.ok) setRelease(await r.json());
           return;
         }
 
-        // Web / Android / iOS: consulta GitHub Releases pra ver versao mais recente
-        const r = await fetch(RELEASE_API, {
-          headers: { Accept: "application/vnd.github+json" },
-        });
+        // Web / Android / iOS: consulta proxy /api/latest-release (server usa GH token)
+        const r = await fetch(RELEASE_API);
         if (!r.ok) {
-          setError(`GitHub API retornou ${r.status}`);
+          setError(`Endpoint de release retornou ${r.status}`);
           return;
         }
         const data = (await r.json()) as ReleaseInfo;
