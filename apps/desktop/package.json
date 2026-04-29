@@ -2,6 +2,7 @@
   "name": "@fabd-fluxos/desktop",
   "version": "0.1.0",
   "private": true,
+  "author": "Weslley Bertoldo <weslleybertoldo18@gmail.com>",
   "description": "FABD Fluxos — wrapper Electron (Windows)",
   "main": "main.js",
   "scripts": {
@@ -15,7 +16,7 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
+    "electron": "33.4.11",
     "electron-builder": "^25.1.8"
   },
   "build": {

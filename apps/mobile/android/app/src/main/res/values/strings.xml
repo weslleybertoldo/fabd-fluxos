@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FABD Fluxos</string>
+    <string name="title_activity_main">FABD Fluxos</string>
+    <string name="package_name">br.com.fabd.fluxos</string>
+    <string name="custom_url_scheme">br.com.fabd.fluxos</string>
+</resources>

@@ -1,32 +1,56 @@
-# FABD Fluxos — Mobile (Capacitor)
+# @fabd-fluxos/mobile — Capacitor Android wrapper
 
-Wrapper Android do app web. WebView carrega `https://fluxos.fabd.com.br` direto (mesma codebase que o web).
+App nativo Android que carrega https://fluxos.fabd.com.br no WebView. One codebase, three platforms (web + desktop + mobile).
 
-## Setup inicial (uma vez)
+## Estrutura
 
-```sh
-cd apps/mobile
-pnpm install
-npx cap add android
-```
+- `capacitor.config.ts` — config principal (appId, plugins, server URL)
+- `www/index.html` — fallback estático (Capacitor exige um webDir mesmo carregando URL externa)
+- `android/` — projeto nativo gerado via `cap add android`. Commitado pra preservar customizações futuras (ícones, splash, AndroidManifest)
 
-## Sincronizar (sempre que mudar config ou plugins)
+## Build do APK
 
-```sh
+### Pré-requisitos
+1. **JDK 17** (Eclipse Temurin recomendado): https://adoptium.net/
+   - Setar `JAVA_HOME` apontando pro JDK
+2. **Android SDK** (via Android Studio ou cmdline-tools)
+   - Setar `ANDROID_HOME` apontando pro SDK
+   - Aceitar licenças: `sdkmanager --licenses`
+
+### Sincronizar config web → nativo
+```bash
 pnpm mobile:sync
 ```
 
-## Abrir no Android Studio
+### Build APK debug (distribuir manualmente, sideload)
+```bash
+cd apps/mobile/android
+./gradlew.bat assembleDebug
+```
+APK fica em `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
 
-```sh
-pnpm mobile:open
+### Build APK release (Play Store)
+Precisa keystore — gerar uma vez:
+```bash
+keytool -genkey -v -keystore fabd-release.keystore -alias fabd -keyalg RSA -keysize 2048 -validity 10000
+```
+Salvar a senha em local seguro (LastPass/1Password). Configurar `android/app/build.gradle` com signingConfig referenciando a keystore. Depois:
+```bash
+./gradlew.bat assembleRelease
 ```
 
-## Build APK
+### Abrir no Android Studio
+```bash
+pnpm mobile:open
+```
+**Build → Build Bundle(s)/APK(s) → Build APK(s)**.
 
-No Android Studio: **Build → Build Bundle(s)/APK(s) → Build APK(s)**.
-
-Saida: `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+## Plugins Capacitor instalados
+- `@capacitor/app` — eventos lifecycle
+- `@capacitor/browser` — abrir links externos no Chrome custom tab
+- `@capacitor/preferences` — storage nativo
+- `@capacitor/push-notifications` — FCM (sub-fase 8D, futuro)
+- `@capacitor/status-bar` — cor da status bar Android
 
 ## Deep link OAuth callback
 
