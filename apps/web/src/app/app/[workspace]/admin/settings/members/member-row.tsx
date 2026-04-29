@@ -39,7 +39,10 @@ export function MemberRow({
           <p className="truncate font-medium text-slate-900">
             {member.google_full_name ?? "Sem nome"}
           </p>
-          <p className="truncate text-xs text-slate-500">
+          {member.google_email ? (
+            <p className="truncate text-xs text-slate-500">{member.google_email}</p>
+          ) : null}
+          <p className="truncate text-xs text-slate-400">
             {mode === "pending"
               ? "Solicitou acesso"
               : `${member.role} · desde ${new Date(member.approved_at ?? member.created_at).toLocaleDateString("pt-BR")}`}

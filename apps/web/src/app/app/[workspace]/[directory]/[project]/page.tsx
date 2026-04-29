@@ -10,7 +10,12 @@ import { RemindersAndLists } from "./reminders-and-lists";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type {
   DirectoryRow,
+  FlowCommentRow,
   FlowRow,
+  PhaseAttachmentRow,
+  PhaseFieldRow,
+  PhaseFieldValueRow,
+  PhaseResponsibleRow,
   PhaseRow,
   ProjectRow,
   ReminderRow,
@@ -143,6 +148,91 @@ export default async function ProjectPage({
   for (const it of items) {
     if (!itemsByList[it.list_id]) itemsByList[it.list_id] = [];
     itemsByList[it.list_id]!.push(it);
+  }
+
+  // Bulk loads pra alimentar o PhaseDetailModal (clique em mini-fase do board)
+  const allPhaseIds = allPhases.map((p) => p.id);
+
+  const [
+    attsRes,
+    fieldsRes,
+    respRes,
+    commentsRes,
+  ] = await Promise.all([
+    allPhaseIds.length
+      ? supabase
+          .from("phase_attachments")
+          .select("*")
+          .in("phase_id", allPhaseIds)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] }),
+    allPhaseIds.length
+      ? supabase
+          .from("phase_fields")
+          .select("*")
+          .in("phase_id", allPhaseIds)
+          .order("order_index", { ascending: true })
+      : Promise.resolve({ data: [] }),
+    allPhaseIds.length
+      ? supabase
+          .from("phase_responsibles")
+          .select("phase_id, user_id, assigned_by, assigned_at")
+          .in("phase_id", allPhaseIds)
+      : Promise.resolve({ data: [] }),
+    flowIds.length
+      ? supabase
+          .from("flow_comments")
+          .select("*")
+          .in("flow_id", flowIds)
+          .not("phase_id", "is", null)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const attachments = (attsRes.data ?? []) as unknown as PhaseAttachmentRow[];
+  const attachmentsByPhase: Record<string, PhaseAttachmentRow[]> = {};
+  for (const a of attachments) {
+    if (!attachmentsByPhase[a.phase_id]) attachmentsByPhase[a.phase_id] = [];
+    attachmentsByPhase[a.phase_id]!.push(a);
+  }
+
+  const fields = (fieldsRes.data ?? []) as unknown as PhaseFieldRow[];
+  const fieldsByPhase: Record<string, PhaseFieldRow[]> = {};
+  for (const f of fields) {
+    if (!fieldsByPhase[f.phase_id]) fieldsByPhase[f.phase_id] = [];
+    fieldsByPhase[f.phase_id]!.push(f);
+  }
+
+  // Carregar values pelos field_ids
+  const fieldIds = fields.map((f) => f.id);
+  const { data: valuesData } = fieldIds.length
+    ? await supabase
+        .from("phase_field_values")
+        .select("*")
+        .in("phase_field_id", fieldIds)
+    : { data: [] };
+  const values = (valuesData ?? []) as unknown as PhaseFieldValueRow[];
+  const valueByFieldPhase: Record<string, PhaseFieldValueRow> = {};
+  for (const v of values) {
+    valueByFieldPhase[`${v.phase_field_id}__${v.current_phase_id}`] = v;
+  }
+
+  const responsibles = (respRes.data ?? []) as unknown as PhaseResponsibleRow[];
+  const responsiblesByPhase: Record<string, string[]> = {};
+  for (const r of responsibles) {
+    if (!responsiblesByPhase[r.phase_id]) responsiblesByPhase[r.phase_id] = [];
+    responsiblesByPhase[r.phase_id]!.push(r.user_id);
+  }
+
+  const phaseComments = (commentsRes.data ?? []) as unknown as FlowCommentRow[];
+  const commentsByPhase: Record<string, FlowCommentRow[]> = {};
+  for (const c of phaseComments) {
+    if (c.phase_id) {
+      if (!commentsByPhase[c.phase_id]) commentsByPhase[c.phase_id] = [];
+      commentsByPhase[c.phase_id]!.push(c);
+    }
   }
 
   // Agrupar phases por flow_id, aplicando a regra de ordenacao do tipo do flow
@@ -345,10 +435,17 @@ export default async function ProjectPage({
             workspaceSlug={ctx.workspace.slug}
             directorySlug={directory.slug}
             projectId={project.id}
+            workspaceId={ctx.workspace.id}
             currentUserId={ctx.member.user_id}
             currentUserRole={ctx.member.role}
             flows={flows}
             phasesByFlow={Object.fromEntries(phasesByFlow)}
+            fieldsByPhase={fieldsByPhase}
+            valueByFieldPhase={valueByFieldPhase}
+            attachmentsByPhase={attachmentsByPhase}
+            commentsByPhase={commentsByPhase}
+            responsiblesByPhase={responsiblesByPhase}
+            members={allMembers}
           />
         )}
       </section>

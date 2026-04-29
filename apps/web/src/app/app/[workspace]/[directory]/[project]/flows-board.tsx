@@ -20,31 +20,63 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { reorderFlows } from "@/lib/actions/flows";
 import { setPhaseCompleted } from "@/lib/actions/phases";
-import type { FlowRow, PhaseRow } from "@/lib/types";
+import { PhaseDetailModal } from "./[flow]/phase-detail-modal";
+import type {
+  FlowCommentRow,
+  FlowRow,
+  PhaseAttachmentRow,
+  PhaseFieldRow,
+  PhaseFieldValueRow,
+  PhaseRow,
+  WorkspaceMemberRow,
+} from "@/lib/types";
+
+type MemberLite = Pick<
+  WorkspaceMemberRow,
+  "user_id" | "google_full_name" | "google_avatar_url"
+>;
 
 interface Props {
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
+  workspaceId: string;
   currentUserId: string;
   currentUserRole: string;
   flows: FlowRow[];
   phasesByFlow: Record<string, PhaseRow[]>;
+  fieldsByPhase: Record<string, PhaseFieldRow[]>;
+  valueByFieldPhase: Record<string, PhaseFieldValueRow>;
+  attachmentsByPhase: Record<string, PhaseAttachmentRow[]>;
+  commentsByPhase: Record<string, FlowCommentRow[]>;
+  responsiblesByPhase: Record<string, string[]>;
+  members: MemberLite[];
 }
 
 export function FlowsBoard({
   workspaceSlug,
   directorySlug,
   projectId,
+  workspaceId,
   currentUserId,
   currentUserRole,
   flows: initialFlows,
   phasesByFlow,
+  fieldsByPhase,
+  valueByFieldPhase,
+  attachmentsByPhase,
+  commentsByPhase,
+  responsiblesByPhase,
+  members,
 }: Props) {
   const router = useRouter();
   const [flows, setFlows] = useState<FlowRow[]>(initialFlows);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [openDetail, setOpenDetail] = useState<{ phase: PhaseRow; flow: FlowRow } | null>(null);
+
+  const memberByUserId = new Map(members.map((m) => [m.user_id, m]));
+  const authorsMap = Object.fromEntries(members.map((m) => [m.user_id, m]));
 
   useEffect(() => {
     setFlows(initialFlows);
@@ -144,11 +176,36 @@ export function FlowsBoard({
                 canReorder={canReorder}
                 pending={pending}
                 onTogglePhase={(p) => togglePhase(flow, p)}
+                onOpenPhase={(p) => setOpenDetail({ phase: p, flow })}
               />
             ))}
           </div>
         </SortableContext>
       </DndContext>
+
+      {openDetail ? (
+        <PhaseDetailModal
+          key={`detail-${openDetail.phase.id}`}
+          workspaceSlug={workspaceSlug}
+          directorySlug={directorySlug}
+          projectId={projectId}
+          flowId={openDetail.flow.id}
+          workspaceId={workspaceId}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
+          canEdit={canEditFlow(openDetail.flow)}
+          phase={openDetail.phase}
+          fields={fieldsByPhase[openDetail.phase.id] ?? []}
+          valueByFieldPhase={valueByFieldPhase}
+          attachments={attachmentsByPhase[openDetail.phase.id] ?? []}
+          comments={commentsByPhase[openDetail.phase.id] ?? []}
+          responsibleUsers={(responsiblesByPhase[openDetail.phase.id] ?? [])
+            .map((uid) => memberByUserId.get(uid))
+            .filter((m): m is MemberLite => !!m)}
+          authors={authorsMap}
+          onClose={() => setOpenDetail(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -163,6 +220,7 @@ function SortableFlowColumn(props: {
   canReorder: boolean;
   pending: boolean;
   onTogglePhase: (phase: PhaseRow) => void;
+  onOpenPhase: (phase: PhaseRow) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.flow.id, disabled: !props.canReorder });
@@ -191,6 +249,7 @@ function SortableFlowColumn(props: {
         pending={props.pending}
         flowType={props.flow.type}
         onTogglePhase={props.onTogglePhase}
+        onOpenPhase={props.onOpenPhase}
       />
     </div>
   );
@@ -266,12 +325,14 @@ function FlowColumnBody({
   pending,
   flowType,
   onTogglePhase,
+  onOpenPhase,
 }: {
   phases: PhaseRow[];
   canEdit: boolean;
   pending: boolean;
   flowType: "continuous" | "non_continuous";
   onTogglePhase: (phase: PhaseRow) => void;
+  onOpenPhase: (phase: PhaseRow) => void;
 }) {
   if (phases.length === 0) {
     return (
@@ -302,6 +363,7 @@ function FlowColumnBody({
             pending={pending}
             flowType={flowType}
             onToggle={() => onTogglePhase(p)}
+            onOpen={() => onOpenPhase(p)}
           />
         ))}
       </ol>
@@ -316,6 +378,7 @@ function PhaseMiniCard({
   pending,
   flowType,
   onToggle,
+  onOpen,
 }: {
   phase: PhaseRow;
   index: number;
@@ -323,6 +386,7 @@ function PhaseMiniCard({
   pending: boolean;
   flowType: "continuous" | "non_continuous";
   onToggle: () => void;
+  onOpen: () => void;
 }) {
   const completed = !!phase.completed_at;
   const isOverdue =
@@ -361,13 +425,17 @@ function PhaseMiniCard({
           <polyline points="20 6 9 17 4 12" />
         </svg>
       </button>
-      <div className="min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-w-0 flex-1 text-left"
+      >
         <div className="flex items-baseline gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             #{index + 1}
           </span>
           <p
-            className={`truncate text-sm font-medium ${
+            className={`truncate text-sm font-medium hover:text-blue-700 hover:underline ${
               completed ? "text-emerald-900 line-through" : "text-slate-900"
             }`}
           >
@@ -386,7 +454,7 @@ function PhaseMiniCard({
         ) : flowType === "continuous" ? (
           <p className="text-[10px] italic text-slate-400">Sem data</p>
         ) : null}
-      </div>
+      </button>
     </li>
   );
 }

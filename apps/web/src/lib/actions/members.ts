@@ -37,7 +37,7 @@ async function getDb(): Promise<{
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
   sb: Sb;
   userId: string | null;
-  userMeta: { fullName: string | null; avatar: string | null };
+  userMeta: { fullName: string | null; avatar: string | null; email: string | null };
 }> {
   const supabase = await createSupabaseServerClient();
   const {
@@ -57,6 +57,7 @@ async function getDb(): Promise<{
         (user?.user_metadata?.avatar_url as string | undefined) ??
         (user?.user_metadata?.picture as string | undefined) ??
         null,
+      email: user?.email ?? null,
     },
   };
 }
@@ -81,6 +82,7 @@ export async function requestMembership(slug: string): Promise<ActionResult> {
     status: "pending",
     google_full_name: userMeta.fullName,
     google_avatar_url: userMeta.avatar,
+    google_email: userMeta.email,
   });
   if (error) return { ok: false, error: error.message };
 

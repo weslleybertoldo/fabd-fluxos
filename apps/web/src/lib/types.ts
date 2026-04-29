@@ -24,6 +24,7 @@ export type WorkspaceMemberRow = {
   status: MemberStatus;
   google_full_name: string | null;
   google_avatar_url: string | null;
+  google_email: string | null;
   approved_by: string | null;
   approved_at: string | null;
   created_at: string;
