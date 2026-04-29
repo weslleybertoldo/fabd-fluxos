@@ -3,6 +3,7 @@ import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
+import { DirectoryIcon, directoryInitials } from "@/components/directory-icon";
 import type { DirectoryRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -87,29 +88,14 @@ export default async function WorkspaceHomePage({
 }
 
 function DirectoryThumb({ directory }: { directory: DirectoryRow }) {
-  const initials = directory.name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  const bg = directory.color ?? "#1E3A8A";
   return (
-    <div
-      className="grid size-14 place-items-center overflow-hidden rounded-2xl text-base font-bold text-white"
-      style={{ backgroundColor: bg }}
-    >
-      {directory.image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={directory.image_url}
-          alt={directory.name}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        initials || "FF"
-      )}
-    </div>
+    <DirectoryIcon
+      icon={directory.icon}
+      imageUrl={directory.image_url}
+      initials={directoryInitials(directory.name) || "FF"}
+      bg={directory.color ?? "#1E3A8A"}
+      alt={directory.name}
+      sizePx={56}
+    />
   );
 }

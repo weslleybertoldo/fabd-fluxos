@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { createSupabaseBrowserClient } from "@fabd-fluxos/db/browser";
+import { DirectoryIcon, directoryInitials } from "@/components/directory-icon";
 import {
   createDirectory,
   deleteDirectory,
@@ -409,28 +410,15 @@ function SortableDirectoryRow({
 }
 
 function DirectoryThumb({ directory }: { directory: DirectoryRow }) {
-  const initials = directory.name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
   return (
-    <div
-      className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl text-sm font-bold text-white"
-      style={{ backgroundColor: directory.color ?? "#1E3A8A" }}
-    >
-      {directory.image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={directory.image_url}
-          alt={directory.name}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        initials
-      )}
-    </div>
+    <DirectoryIcon
+      icon={directory.icon}
+      imageUrl={directory.image_url}
+      initials={directoryInitials(directory.name)}
+      bg={directory.color ?? "#1E3A8A"}
+      alt={directory.name}
+      sizePx={48}
+    />
   );
 }
 
@@ -451,6 +439,7 @@ function EditModal({
   const [description, setDescription] = useState(directory.description ?? "");
   const [color, setColor] = useState(directory.color ?? "#1E3A8A");
   const [imageUrl, setImageUrl] = useState<string | null>(directory.image_url);
+  const [icon, setIcon] = useState<string>(directory.icon ?? "");
   const [showReports, setShowReports] = useState<boolean>(directory.show_reports);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -519,6 +508,7 @@ function EditModal({
         name,
         description: description || null,
         color,
+        icon: icon.trim() || null,
         showReports,
       });
       if (!r.ok) {
@@ -534,26 +524,14 @@ function EditModal({
       <h2 className="text-lg font-semibold text-slate-900">Editar diretoria</h2>
 
       <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <div
-          className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl text-xl font-bold text-white"
-          style={{ backgroundColor: color }}
-        >
-          {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageUrl}
-              alt={directory.name}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            name
-              .split(/\s+/)
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase()
-          )}
-        </div>
+        <DirectoryIcon
+          icon={icon.trim() || null}
+          imageUrl={imageUrl}
+          initials={directoryInitials(name)}
+          bg={color}
+          alt={directory.name}
+          sizePx={80}
+        />
         <div className="flex flex-1 flex-col gap-2">
           <input
             ref={fileRef}
@@ -631,6 +609,55 @@ function EditModal({
             onChange={(e) => setColor(e.target.value)}
             className="h-8 w-10 cursor-pointer rounded border border-slate-200"
           />
+        </div>
+      </Field>
+
+      <Field label="Icone (Iconify, opcional)">
+        <div className="space-y-1.5">
+          <input
+            type="text"
+            value={icon}
+            onChange={(e) => setIcon(e.target.value)}
+            placeholder="ex: mdi:trophy-outline · mdi:scale-balance · mdi:wallet · lucide:briefcase"
+            className={InputCls}
+          />
+          <p className="text-[11px] text-slate-500">
+            Use a sintaxe Iconify (`set:icon`). Catalogo:{" "}
+            <a
+              href="https://icones.js.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline"
+            >
+              icones.js.org
+            </a>
+            . Vazio = mostra iniciais do nome.
+          </p>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {[
+              "mdi:trophy-outline",
+              "mdi:scale-balance",
+              "mdi:wallet-outline",
+              "mdi:briefcase-outline",
+              "mdi:bullhorn-outline",
+              "mdi:earth",
+              "mdi:home-outline",
+              "mdi:account-group-outline",
+            ].map((sug) => (
+              <button
+                key={sug}
+                type="button"
+                onClick={() => setIcon(sug)}
+                className={`rounded-md border px-2 py-1 text-[11px] transition ${
+                  icon === sug
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                }`}
+              >
+                {sug}
+              </button>
+            ))}
+          </div>
         </div>
       </Field>
 
