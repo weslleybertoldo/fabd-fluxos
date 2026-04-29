@@ -156,6 +156,7 @@ export async function updateDirectory(input: {
   icon?: string | null;
   color?: string | null;
   imageUrl?: string | null;
+  showReports?: boolean;
 }): Promise<ActionResult> {
   const { supabase, sb } = await getDb();
 
@@ -190,6 +191,9 @@ export async function updateDirectory(input: {
   if (input.imageUrl !== undefined) {
     patch.image_url = input.imageUrl;
   }
+  if (input.showReports !== undefined) {
+    patch.show_reports = input.showReports;
+  }
   patch.updated_at = new Date().toISOString();
 
   const { data, error } = await sb
@@ -214,12 +218,14 @@ export async function updateDirectory(input: {
         icon: beforeRow.icon,
         color: beforeRow.color,
         image_url: beforeRow.image_url,
+        show_reports: beforeRow.show_reports,
       },
       after: {
         name: after.name,
         icon: after.icon,
         color: after.color,
         image_url: after.image_url,
+        show_reports: after.show_reports,
       },
     },
     context: {

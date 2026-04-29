@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
+import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type { DirectoryRow } from "@/lib/types";
 
@@ -15,11 +16,24 @@ export default async function WorkspaceHomePage({
   const ctx = await requireWorkspaceMember(slug);
 
   const supabase = await createSupabaseServerClient();
-  const { data: dirs } = await supabase
+  const visibleIds = await getVisibleDirectoryIds(
+    supabase,
+    ctx.member.id,
+    ctx.member.role,
+  );
+  let dirsQuery = supabase
     .from("directories")
     .select("*")
     .eq("workspace_id", ctx.workspace.id)
     .order("order_index", { ascending: true });
+  if (visibleIds !== null && visibleIds.length === 0) {
+    // Caso impossivel (helper nunca retorna [] — null OU lista nao-vazia),
+    // mas defensivo: se vier vazio, mostra nada
+    dirsQuery = dirsQuery.in("id", ["__none__"]);
+  } else if (visibleIds !== null) {
+    dirsQuery = dirsQuery.in("id", visibleIds);
+  }
+  const { data: dirs } = await dirsQuery;
   const directories = (dirs ?? []) as unknown as DirectoryRow[];
 
   return (

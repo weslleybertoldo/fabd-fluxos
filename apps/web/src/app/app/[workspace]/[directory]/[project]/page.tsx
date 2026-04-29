@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
+import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { MemberAvatar } from "@/components/member-avatar";
 import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
@@ -53,6 +54,15 @@ export default async function ProjectPage({
     .maybeSingle();
   const directory = dir as unknown as DirectoryRow | null;
   if (!directory) notFound();
+
+  const visibleIds = await getVisibleDirectoryIds(
+    supabase,
+    ctx.member.id,
+    ctx.member.role,
+  );
+  if (visibleIds !== null && !visibleIds.includes(directory.id)) {
+    redirect(`/app/${ctx.workspace.slug}?error=forbidden_directory`);
+  }
 
   const { data: proj } = await supabase
     .from("projects")
@@ -361,26 +371,28 @@ export default async function ProjectPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-slate-900">Fluxos</h2>
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/app/${ctx.workspace.slug}/relatorios`}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            {directory.show_reports ? (
+              <Link
+                href={`/app/${ctx.workspace.slug}/relatorios`}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                <line x1="18" y1="20" x2="18" y2="10" />
-                <line x1="12" y1="20" x2="12" y2="4" />
-                <line x1="6" y1="20" x2="6" y2="14" />
-              </svg>
-              Relatorios
-            </Link>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+                Relatorios
+              </Link>
+            ) : null}
             {canCreateFlow ? (
               <CreateFlowButton
                 workspaceSlug={ctx.workspace.slug}

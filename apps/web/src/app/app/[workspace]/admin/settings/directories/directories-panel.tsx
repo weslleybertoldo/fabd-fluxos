@@ -451,6 +451,7 @@ function EditModal({
   const [description, setDescription] = useState(directory.description ?? "");
   const [color, setColor] = useState(directory.color ?? "#1E3A8A");
   const [imageUrl, setImageUrl] = useState<string | null>(directory.image_url);
+  const [showReports, setShowReports] = useState<boolean>(directory.show_reports);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [uploading, setUploading] = useState(false);
@@ -518,6 +519,7 @@ function EditModal({
         name,
         description: description || null,
         color,
+        showReports,
       });
       if (!r.ok) {
         setError(r.error);
@@ -631,6 +633,23 @@ function EditModal({
           />
         </div>
       </Field>
+
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <input
+          type="checkbox"
+          checked={showReports}
+          onChange={(e) => setShowReports(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300"
+        />
+        <div className="flex-1">
+          <span className="text-sm font-medium text-slate-800">
+            Mostrar Relatorios nesta diretoria
+          </span>
+          <p className="text-xs text-slate-500">
+            Quando desativado, o botao &quot;Relatorios&quot; some dos projetos desta diretoria.
+          </p>
+        </div>
+      </label>
 
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

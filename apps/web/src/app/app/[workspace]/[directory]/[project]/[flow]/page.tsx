@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
+import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { MemberAvatar } from "@/components/member-avatar";
 import { FlowActions } from "./flow-actions";
 import { PhasesPanel } from "./phases-panel";
@@ -49,6 +50,15 @@ export default async function FlowPage({
     .maybeSingle();
   const directory = dir as unknown as DirectoryRow | null;
   if (!directory) notFound();
+
+  const visibleIds = await getVisibleDirectoryIds(
+    supabase,
+    ctx.member.id,
+    ctx.member.role,
+  );
+  if (visibleIds !== null && !visibleIds.includes(directory.id)) {
+    redirect(`/app/${ctx.workspace.slug}?error=forbidden_directory`);
+  }
 
   const { data: proj } = await supabase
     .from("projects")

@@ -30,6 +30,15 @@ type Sb = {
         };
       };
     };
+    delete(): {
+      eq(col: string, val: string):
+        & Promise<{ error: { message: string } | null }>
+        & {
+          eq(col2: string, val2: string): Promise<{
+            error: { message: string } | null;
+          }>;
+        };
+    };
   };
 };
 
@@ -263,6 +272,80 @@ export async function blockMember(
     },
     context: { member_name: updated.google_full_name },
   });
+
+  revalidatePath(`/app`);
+  return { ok: true };
+}
+
+/**
+ * Admin define quais diretorias um member pode acessar.
+ * Sem nenhuma linha = membro ve TODAS as diretorias do workspace (default).
+ * Com 1+ linhas = ve SO essas. Admin sempre ve tudo (gate aplicado em runtime).
+ */
+export async function setMemberDirectoryAccess(input: {
+  workspaceId: string;
+  workspaceMemberId: string;
+  directoryIds: string[]; // novo set completo (substitui anterior)
+}): Promise<ActionResult> {
+  const { supabase, sb, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+
+  const { data: targetMember } = await supabase
+    .from("workspace_members")
+    .select("id, user_id, workspace_id, google_full_name")
+    .eq("id", input.workspaceMemberId)
+    .eq("workspace_id", input.workspaceId)
+    .maybeSingle();
+  const member = targetMember as unknown as
+    | { id: string; user_id: string; workspace_id: string; google_full_name: string | null }
+    | null;
+  if (!member) return { ok: false, error: "Membro nao encontrado neste workspace" };
+
+  const { data: existingData } = await supabase
+    .from("member_directory_access")
+    .select("directory_id")
+    .eq("workspace_member_id", input.workspaceMemberId);
+  const existing = ((existingData ?? []) as unknown as { directory_id: string }[]).map(
+    (r) => r.directory_id,
+  );
+
+  const desired = Array.from(new Set(input.directoryIds.filter(Boolean)));
+  const toAdd = desired.filter((d) => !existing.includes(d));
+  const toRemove = existing.filter((d) => !desired.includes(d));
+
+  for (const dirId of toRemove) {
+    const { error } = await sb
+      .from("member_directory_access")
+      .delete()
+      .eq("workspace_member_id", input.workspaceMemberId)
+      .eq("directory_id", dirId);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  for (const dirId of toAdd) {
+    const { error } = await sb
+      .from("member_directory_access")
+      .insert({
+        workspace_member_id: input.workspaceMemberId,
+        directory_id: dirId,
+        granted_by: userId,
+      });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  if (toAdd.length > 0 || toRemove.length > 0) {
+    await audit({
+      workspaceId: input.workspaceId,
+      entity: "member",
+      entityId: member.user_id,
+      action: "update",
+      changes: {
+        before: { directory_access: existing },
+        after: { directory_access: desired },
+      },
+      context: { member_name: member.google_full_name },
+    });
+  }
 
   revalidatePath(`/app`);
   return { ok: true };

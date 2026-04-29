@@ -31,6 +31,13 @@ export type WorkspaceMemberRow = {
   updated_at: string;
 };
 
+export type MemberDirectoryAccessRow = {
+  workspace_member_id: string;
+  directory_id: string;
+  granted_at: string;
+  granted_by: string;
+};
+
 export type DirectoryRow = {
   id: string;
   workspace_id: string;
@@ -42,6 +49,7 @@ export type DirectoryRow = {
   image_url: string | null;
   order_index: number;
   responsible_user_id: string | null;
+  show_reports: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
+import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { ReportFilters } from "./filters";
 import type {
   DirectoryRow,
@@ -48,6 +49,12 @@ export default async function RelatoriosPage({
 
   const supabase = await createSupabaseServerClient();
 
+  const visibleIds = await getVisibleDirectoryIds(
+    supabase,
+    ctx.member.id,
+    ctx.member.role,
+  );
+
   // Bulk dos metadados pra UI dos filtros
   const [directoriesRes, projectsRes, flowsRes, tagsRes, membersRes] =
     await Promise.all([
@@ -78,9 +85,16 @@ export default async function RelatoriosPage({
         .eq("status", "active"),
     ]);
 
-  const directories = (directoriesRes.data ?? []) as unknown as DirectoryRow[];
-  const projects = (projectsRes.data ?? []) as unknown as ProjectRow[];
-  const flows = (flowsRes.data ?? []) as unknown as FlowFull[];
+  let directories = (directoriesRes.data ?? []) as unknown as DirectoryRow[];
+  if (visibleIds !== null) {
+    directories = directories.filter((d) => visibleIds.includes(d.id));
+  }
+  const visibleDirectoryIds = directories.map((d) => d.id);
+  let projects = (projectsRes.data ?? []) as unknown as ProjectRow[];
+  projects = projects.filter((p) => visibleDirectoryIds.includes(p.directory_id));
+  let flows = (flowsRes.data ?? []) as unknown as FlowFull[];
+  const visibleProjectIds = projects.map((p) => p.id);
+  flows = flows.filter((f) => visibleProjectIds.includes(f.project_id));
   const tags = (tagsRes.data ?? []) as unknown as TagRow[];
   const members = (membersRes.data ?? []) as unknown as Pick<
     WorkspaceMemberRow,

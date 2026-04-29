@@ -1,7 +1,11 @@
 import { requireWorkspaceAdmin } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { MemberRow } from "./member-row";
-import type { WorkspaceMemberRow } from "@/lib/types";
+import type {
+  DirectoryRow,
+  MemberDirectoryAccessRow,
+  WorkspaceMemberRow,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +18,30 @@ export default async function MembersPage({
   const ctx = await requireWorkspaceAdmin(slug);
 
   const supabase = await createSupabaseServerClient();
-  const { data: rows } = await supabase
-    .from("workspace_members")
-    .select("*")
-    .eq("workspace_id", ctx.workspace.id)
-    .order("created_at", { ascending: true });
-  const members = (rows ?? []) as unknown as WorkspaceMemberRow[];
+  const [membersRes, dirsRes, accessRes] = await Promise.all([
+    supabase
+      .from("workspace_members")
+      .select("*")
+      .eq("workspace_id", ctx.workspace.id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("directories")
+      .select("*")
+      .eq("workspace_id", ctx.workspace.id)
+      .order("order_index", { ascending: true }),
+    supabase
+      .from("member_directory_access")
+      .select("workspace_member_id, directory_id, granted_at, granted_by"),
+  ]);
+  const members = (membersRes.data ?? []) as unknown as WorkspaceMemberRow[];
+  const directories = (dirsRes.data ?? []) as unknown as DirectoryRow[];
+  const accessRows = (accessRes.data ?? []) as unknown as MemberDirectoryAccessRow[];
+  const accessByMember: Record<string, string[]> = {};
+  for (const a of accessRows) {
+    if (!accessByMember[a.workspace_member_id])
+      accessByMember[a.workspace_member_id] = [];
+    accessByMember[a.workspace_member_id]!.push(a.directory_id);
+  }
 
   const pending = members.filter((m) => m.status === "pending");
   const active = members.filter((m) => m.status === "active");
@@ -39,14 +61,28 @@ export default async function MembersPage({
 
       <Section title={`Ativos (${active.length})`} emptyMessage="Nenhum membro ativo">
         {active.map((m) => (
-          <MemberRow key={m.id} member={m} workspaceId={ctx.workspace.id} mode="active" />
+          <MemberRow
+            key={m.id}
+            member={m}
+            workspaceId={ctx.workspace.id}
+            mode="active"
+            directories={directories}
+            currentAccess={accessByMember[m.id] ?? []}
+          />
         ))}
       </Section>
 
       {blocked.length > 0 ? (
         <Section title={`Bloqueados (${blocked.length})`} emptyMessage="">
           {blocked.map((m) => (
-            <MemberRow key={m.id} member={m} workspaceId={ctx.workspace.id} mode="blocked" />
+            <MemberRow
+              key={m.id}
+              member={m}
+              workspaceId={ctx.workspace.id}
+              mode="blocked"
+              directories={directories}
+              currentAccess={accessByMember[m.id] ?? []}
+            />
           ))}
         </Section>
       ) : null}

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
+import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { MemberAvatar } from "@/components/member-avatar";
 import { CreateProjectButton } from "./create-project-button";
 import type {
@@ -39,6 +40,16 @@ export default async function DirectoryPage({
     .maybeSingle();
   const directory = dir as unknown as DirectoryRow | null;
   if (!directory) notFound();
+
+  // Bloqueia acesso se member nao tem permissao na diretoria
+  const visibleIds = await getVisibleDirectoryIds(
+    supabase,
+    ctx.member.id,
+    ctx.member.role,
+  );
+  if (visibleIds !== null && !visibleIds.includes(directory.id)) {
+    redirect(`/app/${ctx.workspace.slug}?error=forbidden_directory`);
+  }
 
   const status =
     statusParam === "archived" || statusParam === "completed"
