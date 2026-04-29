@@ -10,12 +10,27 @@ App nativo Android que carrega https://fluxos.fabd.com.br no WebView. One codeba
 
 ## Build do APK
 
-### Pré-requisitos
-1. **JDK 17** (Eclipse Temurin recomendado): https://adoptium.net/
-   - Setar `JAVA_HOME` apontando pro JDK
-2. **Android SDK** (via Android Studio ou cmdline-tools)
-   - Setar `ANDROID_HOME` apontando pro SDK
-   - Aceitar licenças: `sdkmanager --licenses`
+### Pré-requisitos (já instalados nesta máquina)
+1. **JDK 21** Temurin em `C:\Users\Usuário\jdk21\jdk-21.0.5+11\` (Capacitor 7 exige Java 21+; Java 17 não basta — `error: invalid source release: 21`)
+2. **Android SDK** em `C:\Users\Usuário\android-sdk\` com:
+   - `cmdline-tools/latest/`
+   - `platform-tools/`
+   - `platforms/android-34/`
+   - `build-tools/34.0.0/`
+3. `gradle.properties` tem `android.overridePathCheck=true` porque a home `Usuário` tem caractere não-ASCII (sem isso AGP recusa build)
+
+### Variáveis de ambiente (PowerShell)
+```powershell
+$env:JAVA_HOME = "C:\Users\Usuário\jdk21\jdk-21.0.5+11"
+$env:ANDROID_HOME = "C:\Users\Usuário\android-sdk"
+$env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
+```
+
+### Em outra máquina, instalar do zero
+1. Baixar Eclipse Temurin JDK 21: https://adoptium.net/
+2. Baixar Android cmdline-tools: https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip — extrair em `<sdk>/cmdline-tools/latest/` (estrutura exigida)
+3. Aceitar licenças: `sdkmanager --licenses`
+4. Instalar packages: `sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"`
 
 ### Sincronizar config web → nativo
 ```bash
