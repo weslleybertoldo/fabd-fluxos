@@ -8,7 +8,18 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/actions/notifications";
+import { PushSubscribeButton } from "./push-subscribe";
 import type { NotificationRow } from "@/lib/types";
+
+function PushSection() {
+  const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!vapid) return null;
+  return (
+    <div className="border-b border-slate-100 px-4 py-3">
+      <PushSubscribeButton vapidPublicKey={vapid} />
+    </div>
+  );
+}
 
 interface Props {
   workspaceSlug: string;
@@ -119,6 +130,8 @@ export function NotificationsBell({
               </button>
             ) : null}
           </div>
+
+          <PushSection />
 
           {items.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-slate-500">

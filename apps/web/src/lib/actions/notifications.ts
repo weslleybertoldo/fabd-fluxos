@@ -2,8 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
+import { sendPushToUser } from "./push";
+import { sendEmail, renderNotificationEmail } from "../email";
 import type { EntityType } from "@fabd-fluxos/db";
 import type { NotificationRow, NotificationType } from "../types";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://fluxos.fabd.com.br";
 
 type ActionResult<T = void> =
   | { ok: true; data: T }
@@ -50,7 +54,7 @@ export async function notify(input: {
   entityId?: string | null;
   link?: string | null;
 }): Promise<ActionResult> {
-  const { sb } = await getDb();
+  const { sb, supabase } = await getDb();
   const { error } = await sb.rpc("notify_user", {
     p_target_user_id: input.targetUserId,
     p_workspace_id: input.workspaceId,
@@ -62,6 +66,64 @@ export async function notify(input: {
     p_link: input.link ?? null,
   });
   if (error) return { ok: false, error: error.message };
+
+  // Fanout pra Web Push + Email — best-effort, nao falha a action chamadora
+  const absoluteLink = input.link
+    ? input.link.startsWith("http")
+      ? input.link
+      : `${APP_URL}${input.link}`
+    : null;
+  try {
+    await sendPushToUser({
+      userId: input.targetUserId,
+      payload: {
+        title: input.title,
+        body: input.body ?? undefined,
+        url: absoluteLink ?? "/app",
+        tag: `${input.type}-${input.entityId ?? "x"}`,
+      },
+    });
+  } catch {
+    // ignore
+  }
+
+  // Email — busca email + nome do member do workspace
+  try {
+    const { data: memberData } = await supabase
+      .from("workspace_members")
+      .select("google_email, google_full_name")
+      .eq("workspace_id", input.workspaceId)
+      .eq("user_id", input.targetUserId)
+      .maybeSingle();
+    const member = memberData as unknown as
+      | { google_email: string | null; google_full_name: string | null }
+      | null;
+    if (member?.google_email) {
+      const { data: wsData } = await supabase
+        .from("workspaces")
+        .select("name")
+        .eq("id", input.workspaceId)
+        .maybeSingle();
+      const workspaceName =
+        ((wsData as unknown as { name: string } | null)?.name) ?? "FABD Fluxos";
+      const tpl = renderNotificationEmail({
+        recipientName: member.google_full_name,
+        title: input.title,
+        body: input.body,
+        link: absoluteLink,
+        workspaceName,
+      });
+      await sendEmail({
+        to: member.google_email,
+        subject: input.title,
+        html: tpl.html,
+        text: tpl.text,
+      });
+    }
+  } catch {
+    // ignore
+  }
+
   return { ok: true, data: undefined };
 }
 

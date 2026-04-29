@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendPushToUser } from "@/lib/actions/push";
+import { renderNotificationEmail, sendEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://fluxos.fabd.com.br";
 
 /**
  * Cron diario: dispara phase_overdue e phase_due_soon.
@@ -211,6 +215,48 @@ async function runJob(req: Request) {
         notification_type: type,
         notification_day: day,
       });
+
+      // Fanout: Web Push + Email (best-effort)
+      const absoluteLink = link ? `${APP_URL}${link}` : "/app";
+      try {
+        await sendPushToUser({
+          userId: uid,
+          payload: { title, body, url: absoluteLink, tag: `${type}-${ph.id}` },
+        });
+      } catch {}
+
+      try {
+        const { data: memberRow } = await supa
+          .from("workspace_members")
+          .select("google_email, google_full_name")
+          .eq("workspace_id", wsId)
+          .eq("user_id", uid)
+          .maybeSingle();
+        const member = memberRow as
+          | { google_email: string | null; google_full_name: string | null }
+          | null;
+        if (member?.google_email) {
+          const { data: wsRow } = await supa
+            .from("workspaces")
+            .select("name")
+            .eq("id", wsId)
+            .maybeSingle();
+          const wsName = (wsRow as { name: string } | null)?.name ?? "FABD Fluxos";
+          const tpl = renderNotificationEmail({
+            recipientName: member.google_full_name,
+            title,
+            body,
+            link: absoluteLink,
+            workspaceName: wsName,
+          });
+          await sendEmail({
+            to: member.google_email,
+            subject: title,
+            html: tpl.html,
+            text: tpl.text,
+          });
+        }
+      } catch {}
 
       sent++;
     }
