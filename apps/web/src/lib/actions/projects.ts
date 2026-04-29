@@ -330,6 +330,66 @@ export async function reactivateProject(input: {
   return changeStatus(input, "active", "reactivate");
 }
 
+/**
+ * Clona projeto via RPC SECURITY DEFINER. Copia projeto + flows + phases +
+ * phase_fields (estrutura, sem values) + phase_responsibles + flow_tags.
+ * NAO copia: comments, attachments, phase_field_values, reminders, simple_lists.
+ * Novo projeto recebe nome "Cópia <nome original>" e status=active.
+ */
+export async function cloneProject(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+}): Promise<ActionResult<{ newProjectId: string }>> {
+  const { supabase } = await getDb();
+
+  const ctx = await resolveDirectoryContext(input.workspaceSlug, input.directorySlug);
+  if (!ctx.ok) return ctx;
+
+  const { data: before } = await supabase
+    .from("projects")
+    .select("name")
+    .eq("id", input.projectId)
+    .maybeSingle();
+  const beforeRow = before as unknown as { name: string } | null;
+  if (!beforeRow) return { ok: false, error: "Projeto nao encontrado" };
+
+  const { data, error } = await (
+    supabase as unknown as {
+      rpc(
+        fn: string,
+        args: Record<string, unknown>,
+      ): Promise<{ data: string | null; error: { message: string } | null }>;
+    }
+  ).rpc("clone_project", { p_project_id: input.projectId });
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Falha ao clonar projeto" };
+
+  const newProjectId = data;
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "project",
+    entityId: newProjectId,
+    action: "create",
+    changes: {
+      after: { cloned_from: input.projectId, name: `Cópia ${beforeRow.name}` },
+    },
+    context: {
+      directory_id: ctx.directory.id,
+      directory_slug: ctx.directory.slug,
+      directory_name: ctx.directory.name,
+      project_id: newProjectId,
+      project_name: `Cópia ${beforeRow.name}`,
+      cloned_from_project_id: input.projectId,
+    },
+  });
+
+  revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}`);
+  return { ok: true, data: { newProjectId } };
+}
+
 /** Deletar = só admin. RLS bloqueia diretor. */
 export async function deleteProject(input: {
   workspaceSlug: string;

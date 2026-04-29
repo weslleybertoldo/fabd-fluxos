@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MemberPicker } from "@/components/member-picker";
 import {
   archiveProject,
+  cloneProject,
   completeProject,
   deleteProject,
   reactivateProject,
@@ -109,6 +110,26 @@ export function ProjectActions({
     });
   }
 
+  function runClone() {
+    setError(null);
+    setMenuOpen(false);
+    if (!confirm(`Criar uma copia deste projeto? Sera criado um novo "Cópia ${project.name}" com todos os fluxos, fases, campos e responsaveis.`))
+      return;
+    start(async () => {
+      const r = await cloneProject({
+        workspaceSlug,
+        directorySlug,
+        projectId: project.id,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      // Redireciona pra nova copia
+      router.push(`/app/${workspaceSlug}/${directorySlug}/${r.data.newProjectId}`);
+    });
+  }
+
   function submitResponsible(formData: FormData) {
     setError(null);
     const responsibleUserId = (formData.get("responsibleUserId") as string) ?? "";
@@ -175,6 +196,10 @@ export function ProjectActions({
                 setMenuOpen(false);
                 setModal("responsible");
               }}
+            />
+            <MenuItem
+              label="Criar copia"
+              onClick={runClone}
             />
             <div className="my-1 h-px bg-slate-100" />
             {isActive ? (
