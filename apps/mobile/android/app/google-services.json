@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "39714419753",
+    "project_id": "fabd-fluxos",
+    "storage_bucket": "fabd-fluxos.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:39714419753:android:3c3c2299ab4e3c5812d838",
+        "android_client_info": {
+          "package_name": "br.com.fabd.fluxos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8O8mY8VtA6HcKbqMViCc9nJ1B6bTOkSs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
