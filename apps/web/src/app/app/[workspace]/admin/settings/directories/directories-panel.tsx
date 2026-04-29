@@ -18,7 +18,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { createSupabaseBrowserClient } from "@fabd-fluxos/db/browser";
-import { DirectoryIcon, directoryInitials } from "@/components/directory-icon";
+import { DirectoryIcon } from "@/components/directory-icon";
+import { directoryInitials } from "@/lib/directory";
 import {
   createDirectory,
   deleteDirectory,

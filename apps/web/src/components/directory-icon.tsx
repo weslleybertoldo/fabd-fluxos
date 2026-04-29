@@ -52,13 +52,6 @@ export function DirectoryIcon({
   );
 }
 
-/** Ajuda a derivar iniciais consistentes do nome da diretoria. */
-export function directoryInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
+// directoryInitials vive em `@/lib/directory` (modulo neutro). Importe direto
+// de la em RSC ou client — exportar daqui causaria erro pq este arquivo tem
+// 'use client' e RSC nao pode chamar funcoes de modulos client.

@@ -3,7 +3,8 @@ import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
-import { DirectoryIcon, directoryInitials } from "@/components/directory-icon";
+import { DirectoryIcon } from "@/components/directory-icon";
+import { directoryInitials } from "@/lib/directory";
 import type { DirectoryRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
