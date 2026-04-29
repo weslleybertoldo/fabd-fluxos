@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
-import { requestMembership } from "@/lib/actions/members";
 import { WorkspaceSearch } from "./workspace-search";
+import { RequestAccessButton } from "./request-access-button";
 import type { WorkspaceMemberRow, WorkspaceRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -141,20 +141,7 @@ export default async function AppHomePage({
               >
                 <h3 className="text-lg font-semibold text-slate-900">{w.name}</h3>
                 <p className="mt-1 text-sm text-slate-500">/{w.slug}</p>
-                <form
-                  action={async () => {
-                    "use server";
-                    await requestMembership(w.slug);
-                  }}
-                  className="mt-4"
-                >
-                  <button
-                    type="submit"
-                    className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                  >
-                    Solicitar acesso
-                  </button>
-                </form>
+                <RequestAccessButton workspaceId={w.id} />
               </li>
             ))}
           </ul>
