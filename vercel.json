@@ -4,5 +4,11 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter @fabd-fluxos/web build",
   "outputDirectory": "apps/web/.next",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./apps/web ./packages ./pnpm-lock.yaml ./pnpm-workspace.yaml"
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./apps/web ./packages ./pnpm-lock.yaml ./pnpm-workspace.yaml ./vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/notify-due-phases",
+      "schedule": "0 12 * * *"
+    }
+  ]
 }
