@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { sendPushToUser } from "./push";
+import { sendFcmToUser } from "./fcm";
 import { sendEmail, renderNotificationEmail } from "../email";
 import type { EntityType } from "@fabd-fluxos/db";
 import type { NotificationRow, NotificationType } from "../types";
@@ -73,18 +74,21 @@ export async function notify(input: {
       ? input.link
       : `${APP_URL}${input.link}`
     : null;
+  const pushPayload = {
+    title: input.title,
+    body: input.body ?? undefined,
+    url: absoluteLink ?? "/app",
+    tag: `${input.type}-${input.entityId ?? "x"}`,
+  };
   try {
-    await sendPushToUser({
-      userId: input.targetUserId,
-      payload: {
-        title: input.title,
-        body: input.body ?? undefined,
-        url: absoluteLink ?? "/app",
-        tag: `${input.type}-${input.entityId ?? "x"}`,
-      },
-    });
+    await sendPushToUser({ userId: input.targetUserId, payload: pushPayload });
   } catch (e) {
-    console.error(`[notify] push failed user=${input.targetUserId}:`, e);
+    console.error(`[notify] web-push failed user=${input.targetUserId}:`, e);
+  }
+  try {
+    await sendFcmToUser({ userId: input.targetUserId, payload: pushPayload });
+  } catch (e) {
+    console.error(`[notify] fcm failed user=${input.targetUserId}:`, e);
   }
 
   // Email — busca email + nome do member do workspace

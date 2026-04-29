@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToUser } from "@/lib/actions/push";
+import { sendFcmToUser } from "@/lib/actions/fcm";
 import { renderNotificationEmail, sendEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
@@ -216,15 +217,18 @@ async function runJob(req: Request) {
         notification_day: day,
       });
 
-      // Fanout: Web Push + Email (best-effort, mas LOGA erros em vez de engolir)
+      // Fanout: Web Push + FCM Android + Email (best-effort, LOGA erros)
       const absoluteLink = link ? `${APP_URL}${link}` : "/app";
+      const pushPayload = { title, body, url: absoluteLink, tag: `${type}-${ph.id}` };
       try {
-        await sendPushToUser({
-          userId: uid,
-          payload: { title, body, url: absoluteLink, tag: `${type}-${ph.id}` },
-        });
+        await sendPushToUser({ userId: uid, payload: pushPayload });
       } catch (e) {
-        console.error(`[cron-notify] push failed phase=${ph.id} user=${uid}:`, e);
+        console.error(`[cron-notify] web-push failed phase=${ph.id} user=${uid}:`, e);
+      }
+      try {
+        await sendFcmToUser({ userId: uid, payload: pushPayload });
+      } catch (e) {
+        console.error(`[cron-notify] fcm failed phase=${ph.id} user=${uid}:`, e);
       }
 
       try {
