@@ -83,8 +83,8 @@ export async function notify(input: {
         tag: `${input.type}-${input.entityId ?? "x"}`,
       },
     });
-  } catch {
-    // ignore
+  } catch (e) {
+    console.error(`[notify] push failed user=${input.targetUserId}:`, e);
   }
 
   // Email — busca email + nome do member do workspace
@@ -120,8 +120,8 @@ export async function notify(input: {
         text: tpl.text,
       });
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    console.error(`[notify] email failed user=${input.targetUserId}:`, e);
   }
 
   return { ok: true, data: undefined };

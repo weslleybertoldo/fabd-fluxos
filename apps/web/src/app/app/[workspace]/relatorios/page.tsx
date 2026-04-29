@@ -9,7 +9,6 @@ import type {
   PhaseRow,
   ProjectRow,
   TagRow,
-  WorkspaceMemberRow,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -96,10 +95,9 @@ export default async function RelatoriosPage({
   const visibleProjectIds = projects.map((p) => p.id);
   flows = flows.filter((f) => visibleProjectIds.includes(f.project_id));
   const tags = (tagsRes.data ?? []) as unknown as TagRow[];
-  const members = (membersRes.data ?? []) as unknown as Pick<
-    WorkspaceMemberRow,
-    "user_id" | "google_full_name" | "google_avatar_url"
-  >[];
+  // membersRes carregado no Promise.all (linha 49) caso futuras features precisem;
+  // hoje a pagina nao mostra avatar de members na lista — manter sem extrair pra evitar import.
+  void membersRes;
 
   // ---- Query principal de phases ----
   // RLS ja filtra por workspace via workspace_of_phase. Pra filtrar mais

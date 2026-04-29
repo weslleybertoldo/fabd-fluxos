@@ -111,6 +111,7 @@ export function ProjectActions({
   }
 
   function runClone() {
+    if (pending) return; // guard race double-click
     setError(null);
     setMenuOpen(false);
     if (!confirm(`Criar uma copia deste projeto? Sera criado um novo "Cópia ${project.name}" com todos os fluxos, fases, campos e responsaveis.`))

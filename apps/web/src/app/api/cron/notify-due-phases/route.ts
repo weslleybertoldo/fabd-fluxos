@@ -216,14 +216,16 @@ async function runJob(req: Request) {
         notification_day: day,
       });
 
-      // Fanout: Web Push + Email (best-effort)
+      // Fanout: Web Push + Email (best-effort, mas LOGA erros em vez de engolir)
       const absoluteLink = link ? `${APP_URL}${link}` : "/app";
       try {
         await sendPushToUser({
           userId: uid,
           payload: { title, body, url: absoluteLink, tag: `${type}-${ph.id}` },
         });
-      } catch {}
+      } catch (e) {
+        console.error(`[cron-notify] push failed phase=${ph.id} user=${uid}:`, e);
+      }
 
       try {
         const { data: memberRow } = await supa
@@ -249,14 +251,19 @@ async function runJob(req: Request) {
             link: absoluteLink,
             workspaceName: wsName,
           });
-          await sendEmail({
+          const r = await sendEmail({
             to: member.google_email,
             subject: title,
             html: tpl.html,
             text: tpl.text,
           });
+          if (!r.ok) {
+            console.error(`[cron-notify] email failed user=${uid}: ${r.error}`);
+          }
         }
-      } catch {}
+      } catch (e) {
+        console.error(`[cron-notify] email exception phase=${ph.id} user=${uid}:`, e);
+      }
 
       sent++;
     }

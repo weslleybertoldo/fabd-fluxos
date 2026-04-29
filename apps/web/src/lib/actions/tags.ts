@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { audit } from "./audit";
-import type { FlowRow, TagRow, WorkspaceRow } from "../types";
+import type { TagRow, WorkspaceRow } from "../types";
 
 type ActionResult<T = void> =
   | { ok: true; data: T }
