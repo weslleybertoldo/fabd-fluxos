@@ -1,6 +1,39 @@
-const { app, BrowserWindow, shell, Menu } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, dialog } = require("electron");
 const path = require("node:path");
 const { autoUpdater } = require("electron-updater");
+
+// IPC: o web app chama window.electronAPI.checkForUpdates() pra forcar
+// verificacao do auto-updater. Retorna {status, message} pra mostrar
+// na pagina de Configuracoes > Atualizacoes.
+ipcMain.handle("check-for-updates", async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    if (!result) {
+      return { status: "no-result", message: "Sem resposta do servidor de updates." };
+    }
+    const updateInfo = result.updateInfo;
+    if (!updateInfo) {
+      return { status: "ok", message: "Voce esta na versao mais recente." };
+    }
+    const current = app.getVersion();
+    if (updateInfo.version === current) {
+      return {
+        status: "ok",
+        message: `Voce esta na versao mais recente (v${current}).`,
+      };
+    }
+    return {
+      status: "update-available",
+      message: `Atualizacao disponivel: v${updateInfo.version}. Sera baixada em segundo plano.`,
+      version: updateInfo.version,
+    };
+  } catch (err) {
+    return {
+      status: "error",
+      message: `Erro ao verificar: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+});
 
 const isDev = process.env.FABD_DEV === "1";
 const APP_URL = isDev ? "http://localhost:3000" : "https://fluxos.fabd.com.br";

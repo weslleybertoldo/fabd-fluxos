@@ -6,5 +6,5 @@ export default async function SettingsIndex({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace: slug } = await params;
-  redirect(`/app/${slug}/admin/settings/directories`);
+  redirect(`/app/${slug}/configuracoes`);
 }

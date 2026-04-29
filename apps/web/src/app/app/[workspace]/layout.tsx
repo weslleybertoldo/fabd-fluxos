@@ -56,21 +56,20 @@ export default async function WorkspaceLayout({
           (trocar workspace)
         </Link>
         <div className="ml-auto flex items-center gap-2">
+          {/* Configuracoes visivel pra todo member ativo (aba Atualizacoes) */}
+          <Link
+            href={`/app/${ctx.workspace.slug}/configuracoes`}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Configuracoes
+          </Link>
           {isAdmin ? (
-            <>
-              <Link
-                href={`/app/${ctx.workspace.slug}/admin/settings`}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Configuracao
-              </Link>
-              <Link
-                href={`/app/${ctx.workspace.slug}/admin/audit`}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Historico
-              </Link>
-            </>
+            <Link
+              href={`/app/${ctx.workspace.slug}/admin/audit`}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Historico
+            </Link>
           ) : null}
           <NotificationsBell
             workspaceSlug={ctx.workspace.slug}

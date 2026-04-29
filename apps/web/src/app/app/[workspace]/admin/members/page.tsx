@@ -6,5 +6,5 @@ export default async function MembersRedirect({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace: slug } = await params;
-  redirect(`/app/${slug}/admin/settings/members`);
+  redirect(`/app/${slug}/configuracoes/membros`);
 }
