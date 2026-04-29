@@ -1,0 +1,20 @@
+# Vercel so precisa do app web + packages + supabase migrations.
+# Demais pastas ficam fora do upload pra evitar limite de tamanho.
+
+apps/desktop
+apps/mobile
+scripts
+supabase
+docs
+
+# Outputs
+**/dist
+**/build
+**/.next
+**/node_modules
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
