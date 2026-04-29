@@ -23,10 +23,26 @@ cur = conn.cursor()
 
 created = {}
 try:
+    # Cria user fake usado SO como responsible no smoke. Email inexistente
+    # `smoke-fake@local` evita poluir o inbox do admin real toda vez que rodar.
+    cur.execute("""
+        insert into auth.users (id, email, encrypted_password, email_confirmed_at, raw_user_meta_data, created_at, updated_at, instance_id, aud, role, raw_app_meta_data, is_anonymous, is_sso_user)
+        values (gen_random_uuid(), 'smoke-fake@local', '', now(), '{"full_name":"Smoke Fake"}'::jsonb, now(), now(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', '{}'::jsonb, false, false)
+        returning id
+    """)
+    fake_uid = cur.fetchone()[0]
+    created["fake_user"] = fake_uid
+    cur.execute(
+        f"""
+        insert into workspace_members (workspace_id, user_id, role, status, approved_at, approved_by, google_full_name, google_email)
+        values ('{WS_ID}', '{fake_uid}', 'membro', 'active', now(), '{ADMIN}', 'Smoke Fake', 'smoke-fake@local')
+        """
+    )
+
     cur.execute(
         f"""
         insert into projects (directory_id, name, status, created_by, responsible_user_id)
-        select d.id, 'CRON SMOKE proj', 'active', '{ADMIN}', '{ADMIN}'
+        select d.id, 'CRON SMOKE proj', 'active', '{ADMIN}', '{fake_uid}'
         from directories d where d.slug = 'tecnica' and d.workspace_id = '{WS_ID}'
         returning id
         """
@@ -56,7 +72,7 @@ try:
     created["phase"] = phase_id
 
     conn.commit()
-    print(f"Setup: phase {phase_id} (due 2 dias atras, project resp = admin)")
+    print(f"Setup: phase {phase_id} (due 2 dias atras, project resp = fake_uid {fake_uid})")
 
     # Hit endpoint
     req = urllib.request.Request(
@@ -70,11 +86,11 @@ try:
         assert body.get("ok") is True, f"endpoint nao retornou ok: {body}"
         assert body.get("sent", 0) >= 1, f"nada foi enviado: {body}"
 
-    # Validar que notification foi criada
+    # Validar que notification foi criada PRO USER FAKE (nao admin real)
     cur.execute(
         f"""
         select type, title, link from notifications
-        where entity = 'phase' and entity_id = '{phase_id}' and user_id = '{ADMIN}'
+        where entity = 'phase' and entity_id = '{phase_id}' and user_id = '{fake_uid}'
         """
     )
     notif_rows = cur.fetchall()
@@ -91,7 +107,7 @@ try:
 
     # Validar log
     cur.execute(
-        f"select notification_type, notification_day from phase_notification_log where phase_id = '{phase_id}' and user_id = '{ADMIN}'"
+        f"select notification_type, notification_day from phase_notification_log where phase_id = '{phase_id}' and user_id = '{fake_uid}'"
     )
     log = cur.fetchall()
     print(f"log entries: {len(log)} (esperado 1) — {log}")
@@ -107,6 +123,10 @@ finally:
         cur.execute(f"delete from flows where id = '{created['flow']}'")
     if "project" in created:
         cur.execute(f"delete from projects where id = '{created['project']}'")
+    if "fake_user" in created:
+        # CASCADE remove workspace_member + phase_responsibles + qualquer
+        # other notification que tenha vazado
+        cur.execute(f"delete from auth.users where id = '{created['fake_user']}'")
     conn.commit()
     cur.close()
     conn.close()
