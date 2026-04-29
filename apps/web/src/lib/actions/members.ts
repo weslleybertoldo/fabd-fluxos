@@ -71,9 +71,53 @@ async function getDb(): Promise<{
   };
 }
 
+/** Busca workspace pelo UUID via RPC SECURITY DEFINER (bypassa RLS pra
+ * permitir descoberta por ID). Retorna nome+slug+status do user atual. */
+export async function findWorkspaceById(workspaceId: string): Promise<
+  | { ok: true; data: {
+      id: string;
+      name: string;
+      slug: string;
+      member_status: string | null;
+      member_role: string | null;
+    } }
+  | { ok: false; error: string }
+> {
+  const { supabase, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+
+  // Validacao basica do UUID antes de chamar RPC
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(workspaceId.trim())) {
+    return { ok: false, error: "ID invalido — cole o UUID completo do workspace" };
+  }
+
+  const sb = supabase as unknown as {
+    rpc(
+      fn: string,
+      args: Record<string, unknown>,
+    ): Promise<{ data: unknown; error: { message: string } | null }>;
+  };
+  const { data, error } = await sb.rpc("find_workspace_by_id", {
+    p_workspace_id: workspaceId.trim(),
+  });
+  if (error) return { ok: false, error: error.message };
+
+  const rows = data as Array<{
+    id: string;
+    name: string;
+    slug: string;
+    member_status: string | null;
+    member_role: string | null;
+  }> | null;
+  const row = rows?.[0];
+  if (!row) return { ok: false, error: "Workspace nao encontrado pra este ID" };
+  return { ok: true, data: row };
+}
+
 /** O usuario logado solicita acesso a um workspace (cria pending). */
 export async function requestMembership(slug: string): Promise<ActionResult> {
-  const { supabase, sb, userId, userMeta } = await getDb();
+  const { supabase, userId } = await getDb();
   if (!userId) return { ok: false, error: "Nao autenticado" };
 
   const { data: ws } = await supabase
@@ -83,6 +127,34 @@ export async function requestMembership(slug: string): Promise<ActionResult> {
     .maybeSingle();
   if (!ws) return { ok: false, error: "Workspace nao encontrado" };
   const workspaceId = (ws as { id: string }).id;
+  return persistMembershipRequest(workspaceId, slug);
+}
+
+/** Variant que recebe o UUID direto — usado quando user descobriu workspace
+ *  via find_workspace_by_id (RPC SECURITY DEFINER). RLS de workspaces
+ *  bloqueia .select("slug") pra anon-member, entao buscamos slug via RPC. */
+export async function requestMembershipById(workspaceId: string): Promise<ActionResult> {
+  const found = await findWorkspaceById(workspaceId);
+  if (!found.ok) return found;
+  // Ja eh member ativo? sem repetir
+  if (found.data.member_status === "active") {
+    return { ok: false, error: "Voce ja eh membro ativo deste workspace" };
+  }
+  if (found.data.member_status === "pending") {
+    return { ok: false, error: "Solicitacao ja enviada — aguarde aprovacao" };
+  }
+  if (found.data.member_status === "blocked") {
+    return { ok: false, error: "Acesso bloqueado neste workspace" };
+  }
+  return persistMembershipRequest(found.data.id, found.data.slug);
+}
+
+async function persistMembershipRequest(
+  workspaceId: string,
+  slug: string,
+): Promise<ActionResult> {
+  const { supabase, sb, userId, userMeta } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
 
   const { error } = await sb.from("workspace_members").insert({
     workspace_id: workspaceId,

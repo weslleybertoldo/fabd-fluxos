@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { requireWorkspaceAdmin } from "@/lib/workspace";
+import { WorkspaceIdCard } from "@/components/workspace-id-card";
 
 export default async function SettingsLayout({
   children,
@@ -8,6 +10,7 @@ export default async function SettingsLayout({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace: slug } = await params;
+  const ctx = await requireWorkspaceAdmin(slug);
   return (
     <div className="space-y-6">
       <header>
@@ -16,6 +19,10 @@ export default async function SettingsLayout({
           Diretorias, membros e ajustes gerais.
         </p>
       </header>
+      <WorkspaceIdCard
+        workspaceId={ctx.workspace.id}
+        workspaceName={ctx.workspace.name}
+      />
       <nav className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm">
         <SubTab href={`/app/${slug}/admin/settings/directories`} label="Diretorias" />
         <SubTab href={`/app/${slug}/admin/settings/members`} label="Membros" />

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { requestMembership } from "@/lib/actions/members";
+import { WorkspaceSearch } from "./workspace-search";
 import type { WorkspaceMemberRow, WorkspaceRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +78,8 @@ export default async function AppHomePage({
           </p>
         ) : null}
       </header>
+
+      <WorkspaceSearch />
 
       <Section title="Membro ativo">
         {active.length === 0 ? (
