@@ -2,21 +2,36 @@ const { app, BrowserWindow, shell, Menu, ipcMain, dialog } = require("electron")
 const path = require("node:path");
 const { autoUpdater } = require("electron-updater");
 
-// IPC: o web app chama window.electronAPI.checkForUpdates() pra forcar
-// verificacao do auto-updater. Retorna {status, message} pra mostrar
+// IPC: o web app chama window.electronAPI.checkForUpdates() pra
+// verificar versao mais recente. Retorna {status, message} pra mostrar
 // na pagina de Configuracoes > Atualizacoes.
+//
+// Como o repo eh PRIVADO, electron-updater nao consegue chamar
+// github.com/.../releases.atom (404 sem auth — feed XML do GitHub
+// ignora token na URL). Em vez disso, chamamos nosso proxy interno
+// /api/latest-release que autentica server-side com GITHUB_TOKEN e
+// retorna info do release pelo REST API. Comparamos versao manualmente.
+//
+// Se o repo virar publico OU configurarmos provider custom (S3/Blob),
+// podemos voltar pra autoUpdater.checkForUpdates() pra download
+// silencioso de fato.
 ipcMain.handle("check-for-updates", async () => {
+  const APP_URL = isDev ? "http://localhost:3000" : "https://fluxos.fabd.com.br";
   try {
-    const result = await autoUpdater.checkForUpdates();
-    if (!result) {
-      return { status: "no-result", message: "Sem resposta do servidor de updates." };
+    const response = await fetch(`${APP_URL}/api/latest-release`);
+    if (!response.ok) {
+      return {
+        status: "error",
+        message: `Endpoint retornou ${response.status}`,
+      };
     }
-    const updateInfo = result.updateInfo;
-    if (!updateInfo) {
-      return { status: "ok", message: "Voce esta na versao mais recente." };
-    }
+    const data = await response.json();
+    const latest = String(data.tag_name || "").replace(/^v/, "");
     const current = app.getVersion();
-    if (updateInfo.version === current) {
+    if (!latest) {
+      return { status: "no-result", message: "Sem release publicado ainda." };
+    }
+    if (latest === current) {
       return {
         status: "ok",
         message: `Voce esta na versao mais recente (v${current}).`,
@@ -24,8 +39,9 @@ ipcMain.handle("check-for-updates", async () => {
     }
     return {
       status: "update-available",
-      message: `Atualizacao disponivel: v${updateInfo.version}. Sera baixada em segundo plano.`,
-      version: updateInfo.version,
+      message: `Atualizacao disponivel: v${latest} (atual v${current}). Baixe o instalador em ${data.html_url}`,
+      version: latest,
+      url: data.html_url,
     };
   } catch (err) {
     return {
