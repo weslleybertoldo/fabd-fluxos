@@ -20,29 +20,39 @@ export default async function AppHomePage({
   const params = await searchParams;
   const supabase = await createSupabaseServerClient();
 
-  const { data: workspaces } = await supabase
-    .from("workspaces")
-    .select("*")
-    .order("created_at", { ascending: true });
-  const wsRows = (workspaces ?? []) as unknown as WorkspaceRow[];
-
   const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id;
+  if (!user) redirect("/");
 
-  const { data: members } = userId
-    ? await supabase
-        .from("workspace_members")
-        .select("workspace_id, status, role")
-        .eq("user_id", userId)
-    : { data: [] };
-  const myMembers = (members ?? []) as unknown as Array<
-    Pick<WorkspaceMemberRow, "workspace_id" | "status" | "role">
-  >;
-
-  const cards: WorkspaceCard[] = wsRows.map((w) => {
-    const m = myMembers.find((x) => x.workspace_id === w.id);
-    return { ...w, member_status: m?.status ?? null, member_role: m?.role ?? null };
-  });
+  // RPC SECURITY DEFINER lista todos workspaces (bypass ws_select) com
+  // status do user atual. Cards renderizam corretamente — membro vai pra
+  // ativo, pending fica em "aguardando", desconhecido vira "disponivel".
+  const sb = supabase as unknown as {
+    rpc(
+      fn: string,
+      args: Record<string, unknown>,
+    ): Promise<{
+      data: Array<{
+        id: string;
+        name: string;
+        slug: string;
+        created_at: string;
+        member_status: string | null;
+        member_role: string | null;
+      }> | null;
+      error: { message: string } | null;
+    }>;
+  };
+  const { data: rpcData } = await sb.rpc("list_discoverable_workspaces", {});
+  const cards: WorkspaceCard[] = (rpcData ?? []).map((w) => ({
+    id: w.id,
+    name: w.name,
+    slug: w.slug,
+    created_at: w.created_at,
+    updated_at: w.created_at,
+    created_by: "",
+    member_status: (w.member_status as WorkspaceMemberRow["status"] | null) ?? null,
+    member_role: (w.member_role as WorkspaceMemberRow["role"] | null) ?? null,
+  }));
 
   const active = cards.filter((c) => c.member_status === "active");
   const otherKnown = cards.filter((c) => c.member_status && c.member_status !== "active");
