@@ -42,51 +42,66 @@ export default async function FlowPage({
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: dir } = await supabase
-    .from("directories")
-    .select("*")
-    .eq("workspace_id", ctx.workspace.id)
-    .eq("slug", dirSlug)
-    .maybeSingle();
-  const directory = dir as unknown as DirectoryRow | null;
+  // Onda 1 paralelo: dir + visibleIds + tags do workspace (independem entre si)
+  const [dirRes, visibleIds, tagsRes] = await Promise.all([
+    supabase
+      .from("directories")
+      .select("*")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("slug", dirSlug)
+      .maybeSingle(),
+    getVisibleDirectoryIds(supabase, ctx.member.id, ctx.member.role),
+    supabase
+      .from("tags")
+      .select("*")
+      .eq("workspace_id", ctx.workspace.id)
+      .order("name", { ascending: true }),
+  ]);
+  const directory = dirRes.data as unknown as DirectoryRow | null;
   if (!directory) notFound();
 
-  const visibleIds = await getVisibleDirectoryIds(
-    supabase,
-    ctx.member.id,
-    ctx.member.role,
-  );
   if (visibleIds !== null && !visibleIds.includes(directory.id)) {
     redirect(`/app/${ctx.workspace.slug}?error=forbidden_directory`);
   }
 
-  const { data: proj } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", projectId)
-    .eq("directory_id", directory.id)
-    .maybeSingle();
-  const project = proj as unknown as ProjectRow | null;
+  // Onda 2 paralelo: project + flow — flow nao depende de project, ambos so dependem
+  // dos params (id) + filtros de FK que sao validados depois com .eq("project_id")
+  const [projRes, flwRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .eq("directory_id", directory.id)
+      .maybeSingle(),
+    supabase
+      .from("flows")
+      .select("*")
+      .eq("id", flowId)
+      .eq("project_id", projectId)
+      .maybeSingle(),
+  ]);
+  const project = projRes.data as unknown as ProjectRow | null;
+  const flow = flwRes.data as unknown as FlowRow | null;
   if (!project) notFound();
-
-  const { data: flw } = await supabase
-    .from("flows")
-    .select("*")
-    .eq("id", flowId)
-    .eq("project_id", project.id)
-    .maybeSingle();
-  const flow = flw as unknown as FlowRow | null;
   if (!flow) notFound();
 
-  // Carregar fases — ordenacao depende do tipo do fluxo:
-  //  continuous: por due_date asc (sem data vai pro fim) e order_index como tiebreak
-  //  non_continuous: por order_index asc (drag-drop manual)
-  const { data: phData } = await supabase
-    .from("phases")
-    .select("*")
-    .eq("flow_id", flow.id)
-    .order("order_index", { ascending: true });
-  const allPhases = (phData ?? []) as unknown as PhaseRow[];
+  // Onda 3 paralelo: phases + comments + flow_tags (todas dependem so de flow.id)
+  const [phasesRes, commentsRes, flowTagsRes] = await Promise.all([
+    supabase
+      .from("phases")
+      .select("*")
+      .eq("flow_id", flow.id)
+      .order("order_index", { ascending: true }),
+    supabase
+      .from("flow_comments")
+      .select("*")
+      .eq("flow_id", flow.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase.from("flow_tags").select("*").eq("flow_id", flow.id),
+  ]);
+  const allPhases = (phasesRes.data ?? []) as unknown as PhaseRow[];
 
   const phases =
     flow.type === "continuous"
@@ -105,14 +120,7 @@ export default async function FlowPage({
   const completedCount = phases.filter((p) => p.completed_at).length;
   const allComplete = phases.length > 0 && completedCount === phases.length;
 
-  const { data: commentsData } = await supabase
-    .from("flow_comments")
-    .select("*")
-    .eq("flow_id", flow.id)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(200);
-  const allComments = (commentsData ?? []) as unknown as FlowCommentRow[];
+  const allComments = (commentsRes.data ?? []) as unknown as FlowCommentRow[];
   // separa: comentarios do FLUXO (phase_id NULL) ficam no painel do fim;
   // comentarios da FASE (phase_id setado) sao agrupados por fase pro modal.
   const flowComments = allComments.filter((c) => !c.phase_id);
@@ -124,19 +132,8 @@ export default async function FlowPage({
     }
   }
 
-  // Tags do workspace + tags atribuidas a este fluxo
-  const { data: tagsData } = await supabase
-    .from("tags")
-    .select("*")
-    .eq("workspace_id", ctx.workspace.id)
-    .order("name", { ascending: true });
-  const allTags = (tagsData ?? []) as unknown as TagRow[];
-
-  const { data: flowTagsData } = await supabase
-    .from("flow_tags")
-    .select("*")
-    .eq("flow_id", flow.id);
-  const flowTagIds = ((flowTagsData ?? []) as unknown as FlowTagRow[]).map(
+  const allTags = (tagsRes.data ?? []) as unknown as TagRow[];
+  const flowTagIds = ((flowTagsRes.data ?? []) as unknown as FlowTagRow[]).map(
     (ft) => ft.tag_id,
   );
 

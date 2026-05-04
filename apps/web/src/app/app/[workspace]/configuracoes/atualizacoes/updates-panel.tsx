@@ -129,6 +129,9 @@ export function UpdatesPanel({ webVersion }: Props) {
         </div>
       </div>
 
+      <DownloadLinksCard />
+
+
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
@@ -152,6 +155,58 @@ export function UpdatesPanel({ webVersion }: Props) {
         <PlatformInfo platform={platform} onReload={reloadWeb} />
       ) : null}
     </section>
+  );
+}
+
+function DownloadLinksCard() {
+  const [release, setRelease] = useState<ReleaseInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(RELEASE_API)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setRelease(data as ReleaseInfo);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const latest = release?.tag_name?.replace(/^v/, "") ?? "";
+  const apkUrl = release && latest
+    ? `${release.html_url.replace("/tag/", "/download/")}/FABD-Fluxos-${latest}.apk`
+    : "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
+  const exeUrl = release && latest
+    ? `${release.html_url.replace("/tag/", "/download/")}/FABD-Fluxos-Setup-${latest}.exe`
+    : "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <p className="text-sm font-semibold text-slate-900">Baixar app</p>
+      <p className="mt-1 text-xs text-slate-600">
+        Instale o FABD Fluxos no celular ou no Windows.
+        {latest ? ` Versao mais recente: v${latest}.` : ""}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={apkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+          Baixar Android (APK)
+        </a>
+        <a
+          href={exeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+          Baixar Windows (.exe)
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -273,9 +328,10 @@ function PlatformInfo({
     return (
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <p className="text-sm text-slate-700">
-          Voce esta usando o app desktop. O auto-updater verifica novas versoes
-          quando voce abre o app — clique em <strong>Verificar atualizacoes</strong>{" "}
-          acima pra forcar a checagem agora.
+          Voce esta usando o app desktop. Ao abrir o app, ele checa silenciosamente
+          se ha versao nova e mostra uma notificacao do Windows quando houver — voce
+          escolhe se quer baixar. Pra checar agora, clique em{" "}
+          <strong>Verificar atualizacoes</strong> acima.
         </p>
       </div>
     );

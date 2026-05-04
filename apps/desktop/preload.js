@@ -9,7 +9,11 @@ contextBridge.exposeInMainWorld("fabdDesktop", {
   },
 });
 
-// API exposta pro web app: chama checkForUpdates do main process
 contextBridge.exposeInMainWorld("electronAPI", {
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  onUpdateAvailable: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("update-available", listener);
+    return () => ipcRenderer.removeListener("update-available", listener);
+  },
 });

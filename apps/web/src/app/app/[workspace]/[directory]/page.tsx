@@ -3,8 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { getVisibleDirectoryIds } from "@/lib/visibility";
-import { MemberAvatar } from "@/components/member-avatar";
 import { CreateProjectButton } from "./create-project-button";
+import { ProjectsGrid } from "./projects-grid";
 import type {
   DirectoryRow,
   ProjectRow,
@@ -32,21 +32,25 @@ export default async function DirectoryPage({
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: dir } = await supabase
-    .from("directories")
-    .select("*")
-    .eq("workspace_id", ctx.workspace.id)
-    .eq("slug", dirSlug)
-    .maybeSingle();
-  const directory = dir as unknown as DirectoryRow | null;
+  // Onda 1: dir + visibleIds + members em paralelo
+  const [dirRes, visibleIds, membersRes] = await Promise.all([
+    supabase
+      .from("directories")
+      .select("*")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("slug", dirSlug)
+      .maybeSingle(),
+    getVisibleDirectoryIds(supabase, ctx.member.id, ctx.member.role),
+    supabase
+      .from("workspace_members")
+      .select("user_id, google_full_name, google_avatar_url, role, status")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("status", "active")
+      .order("google_full_name", { ascending: true }),
+  ]);
+  const directory = dirRes.data as unknown as DirectoryRow | null;
   if (!directory) notFound();
 
-  // Bloqueia acesso se member nao tem permissao na diretoria
-  const visibleIds = await getVisibleDirectoryIds(
-    supabase,
-    ctx.member.id,
-    ctx.member.role,
-  );
   if (visibleIds !== null && !visibleIds.includes(directory.id)) {
     redirect(`/app/${ctx.workspace.slug}?error=forbidden_directory`);
   }
@@ -65,14 +69,7 @@ export default async function DirectoryPage({
     .order("created_at", { ascending: false });
   const projects = (projs ?? []) as unknown as ProjectRow[];
 
-  // members ativos pra picker e responsaveis
-  const { data: membersData } = await supabase
-    .from("workspace_members")
-    .select("user_id, google_full_name, google_avatar_url, role, status")
-    .eq("workspace_id", ctx.workspace.id)
-    .eq("status", "active")
-    .order("google_full_name", { ascending: true });
-  const allMembers = (membersData ?? []) as unknown as Pick<
+  const allMembers = (membersRes.data ?? []) as unknown as Pick<
     WorkspaceMemberRow,
     "user_id" | "google_full_name" | "google_avatar_url" | "role" | "status"
   >[];
@@ -154,74 +151,15 @@ export default async function DirectoryPage({
           </p>
         </div>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((p) => {
-            const responsible = p.responsible_user_id
-              ? memberByUserId.get(p.responsible_user_id)
-              : null;
-            const creator = memberByUserId.get(p.created_by);
-            return (
-              <li key={p.id}>
-                <Link
-                  href={`/app/${ctx.workspace.slug}/${directory.slug}/${p.id}`}
-                  className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-md"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-base font-semibold text-slate-900">{p.name}</h3>
-                    {p.status === "archived" ? (
-                      <StatusBadge label="Arquivado" tone="slate" />
-                    ) : p.status === "completed" ? (
-                      <StatusBadge label="Concluido" tone="green" />
-                    ) : null}
-                  </div>
-                  {p.description ? (
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-500">{p.description}</p>
-                  ) : null}
-                  <div className="mt-auto flex items-center justify-between gap-2 pt-4 text-xs text-slate-500">
-                    <div className="flex items-center gap-2">
-                      {responsible ? (
-                        <>
-                          <MemberAvatar
-                            name={responsible.google_full_name}
-                            avatarUrl={responsible.google_avatar_url}
-                            size="sm"
-                          />
-                          <span className="line-clamp-1">{responsible.google_full_name}</span>
-                        </>
-                      ) : (
-                        <span className="italic text-slate-400">Sem responsavel</span>
-                      )}
-                    </div>
-                    {creator ? (
-                      <span className="line-clamp-1 text-right">criado por {creator.google_full_name?.split(" ")[0]}</span>
-                    ) : null}
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <ProjectsGrid
+          workspaceSlug={ctx.workspace.slug}
+          directorySlug={directory.slug}
+          projects={projects}
+          membersByUserId={Object.fromEntries(memberByUserId)}
+          canReorder={ctx.member.role === "admin" && status === "active"}
+        />
       )}
     </div>
   );
 }
 
-function StatusBadge({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "slate" | "green";
-}) {
-  const tones: Record<string, string> = {
-    slate: "bg-slate-100 text-slate-600",
-    green: "bg-emerald-100 text-emerald-700",
-  };
-  return (
-    <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${tones[tone]}`}
-    >
-      {label}
-    </span>
-  );
-}

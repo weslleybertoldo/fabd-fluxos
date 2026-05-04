@@ -67,12 +67,11 @@ export function MemberRow({
   }
 
   const isAdminMember = member.role === "admin";
-  const accessLabel =
-    isAdminMember
-      ? "Todas (admin)"
-      : currentAccess.length === 0
-        ? "Todas (sem restricao)"
-        : `${currentAccess.length} de ${directories.length}`;
+  const accessLabel = isAdminMember
+    ? "Todas (admin)"
+    : currentAccess.length === 0
+      ? "Todas (sem restricao)"
+      : `${currentAccess.length} de ${directories.length}`;
 
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center">
@@ -206,8 +205,8 @@ export function MemberRow({
             </header>
 
             <p className="text-xs text-slate-500">
-              Marque as diretorias que este membro pode ver. Se nada for marcado,
-              ele tem acesso a TODAS as diretorias.
+              Marque as diretorias que este membro pode ver. Sem marcacao =
+              acesso a TODAS as diretorias.
             </p>
 
             {directories.length === 0 ? (

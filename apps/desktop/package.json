@@ -11,9 +11,6 @@
     "build": "electron-builder --win --x64 --publish never",
     "build:publish": "electron-builder --win --x64 --publish always"
   },
-  "dependencies": {
-    "electron-updater": "^6.3.9"
-  },
   "devDependencies": {
     "cross-env": "^7.0.3",
     "electron": "33.4.11",

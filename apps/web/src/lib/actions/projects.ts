@@ -434,3 +434,76 @@ export async function deleteProject(input: {
   }
   return { ok: true, data: undefined };
 }
+
+/**
+ * Reordena projetos dentro de uma diretoria. Apenas admin reordena
+ * (mesma regra de `reorderFlows` — diretor so reordena se for criador
+ * de TODOS, caso raro; simplificacao = admin only).
+ */
+export async function reorderProjects(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectIds: string[];
+}): Promise<ActionResult> {
+  const { supabase, sb } = await getDb();
+
+  const { data: ws } = await supabase
+    .from("workspaces")
+    .select("*")
+    .eq("slug", input.workspaceSlug)
+    .maybeSingle();
+  const workspace = ws as unknown as WorkspaceRow | null;
+  if (!workspace) return { ok: false, error: "Workspace nao encontrado" };
+
+  const { data: dir } = await supabase
+    .from("directories")
+    .select("*")
+    .eq("workspace_id", workspace.id)
+    .eq("slug", input.directorySlug)
+    .maybeSingle();
+  const directory = dir as unknown as DirectoryRow | null;
+  if (!directory) return { ok: false, error: "Diretoria nao encontrada" };
+
+  // Valida ownership: todos projectIds devem pertencer a essa diretoria
+  const { data: existingData } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("directory_id", directory.id)
+    .in("id", input.projectIds);
+  const existingIds = new Set(
+    ((existingData ?? []) as Array<{ id: string }>).map((r) => r.id),
+  );
+  for (const id of input.projectIds) {
+    if (!existingIds.has(id)) {
+      return { ok: false, error: `Projeto ${id} nao pertence a essa diretoria` };
+    }
+  }
+
+  for (let i = 0; i < input.projectIds.length; i++) {
+    const id = input.projectIds[i];
+    if (!id) continue;
+    const { error } = await sb
+      .from("projects")
+      .update({ order_index: i, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) return { ok: false, error: `Reorder ${id}: ${error.message}` };
+  }
+
+  await audit({
+    workspaceId: workspace.id,
+    entity: "directory",
+    entityId: directory.id,
+    action: "reorder",
+    changes: { after: { project_ids: input.projectIds } },
+    context: {
+      directory_id: directory.id,
+      directory_slug: directory.slug,
+      directory_name: directory.name,
+    },
+  });
+
+  revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}`);
+  return { ok: true, data: undefined };
+}

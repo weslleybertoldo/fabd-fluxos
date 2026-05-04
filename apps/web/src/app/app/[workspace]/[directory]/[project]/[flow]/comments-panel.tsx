@@ -42,6 +42,7 @@ export function CommentsPanel({
   const [pending, start] = useTransition();
 
   const isAdmin = currentUserRole === "admin";
+  const canWrite = currentUserRole === "admin" || currentUserRole === "diretor";
 
   function refresh() {
     router.refresh();
@@ -121,30 +122,32 @@ export function CommentsPanel({
     <section className="space-y-4">
       <h2 className="text-lg font-semibold text-slate-900">Comentarios do fluxo</h2>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-        className="flex gap-2"
-      >
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={2}
-          maxLength={5000}
-          placeholder="Comentario visivel em todas as fases do fluxo..."
-          className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
-          disabled={pending}
-        />
-        <button
-          type="submit"
-          disabled={pending || !text.trim()}
-          className="self-stretch rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+      {canWrite ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+          className="flex gap-2"
         >
-          {pending ? "..." : "Enviar"}
-        </button>
-      </form>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={2}
+            maxLength={5000}
+            placeholder="Comentario visivel em todas as fases do fluxo..."
+            className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+            disabled={pending}
+          />
+          <button
+            type="submit"
+            disabled={pending || !text.trim()}
+            className="self-stretch rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {pending ? "..." : "Enviar"}
+          </button>
+        </form>
+      ) : null}
 
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

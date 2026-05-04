@@ -28,12 +28,10 @@ export default async function WorkspaceHomePage({
     .select("*")
     .eq("workspace_id", ctx.workspace.id)
     .order("order_index", { ascending: true });
-  if (visibleIds !== null && visibleIds.length === 0) {
-    // Caso impossivel (helper nunca retorna [] — null OU lista nao-vazia),
-    // mas defensivo: se vier vazio, mostra nada
-    dirsQuery = dirsQuery.in("id", ["__none__"]);
-  } else if (visibleIds !== null) {
-    dirsQuery = dirsQuery.in("id", visibleIds);
+  if (visibleIds !== null) {
+    dirsQuery = visibleIds.length === 0
+      ? dirsQuery.eq("id", "00000000-0000-0000-0000-000000000000")
+      : dirsQuery.in("id", visibleIds);
   }
   const { data: dirs } = await dirsQuery;
   const directories = (dirs ?? []) as unknown as DirectoryRow[];

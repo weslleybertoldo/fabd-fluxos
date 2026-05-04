@@ -66,6 +66,7 @@ export function PhaseDetailModal({
   const [error, setError] = useState<string | null>(null);
 
   const isAdmin = currentUserRole === "admin";
+  const canWrite = currentUserRole === "admin" || currentUserRole === "diretor";
   const completed = !!phase.completed_at;
   const isOverdue =
     !completed && phase.due_date && new Date(phase.due_date) < new Date();
@@ -267,26 +268,28 @@ export function PhaseDetailModal({
 
           {tab === "comments" ? (
             <div className="space-y-4">
-              <div className="space-y-2">
-                <textarea
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="Escreva um comentario sobre esta fase..."
-                  rows={3}
-                  maxLength={5000}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
-                />
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={submitComment}
-                    disabled={pending || !commentText.trim()}
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-                  >
-                    {pending ? "Enviando..." : "Comentar"}
-                  </button>
+              {canWrite ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    placeholder="Escreva um comentario sobre esta fase..."
+                    rows={3}
+                    maxLength={5000}
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={submitComment}
+                      disabled={pending || !commentText.trim()}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {pending ? "Enviando..." : "Comentar"}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               {comments.length === 0 ? (
                 <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">

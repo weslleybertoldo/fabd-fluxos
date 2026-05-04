@@ -2,7 +2,7 @@ type SupaLike = {
   from(table: string): {
     select(cols?: string): {
       eq(col: string, val: string): Promise<{
-        data: Array<{ directory_id: string }> | null;
+        data: Array<Record<string, string>> | null;
         error: { message: string } | null;
       }>;
     };
@@ -33,6 +33,7 @@ export async function getVisibleDirectoryIds(
     .select("directory_id")
     .eq("workspace_member_id", workspaceMemberId);
   const rows = (data ?? []) as Array<{ directory_id: string }>;
-  if (rows.length === 0) return null; // sem restricao
+  if (rows.length === 0) return null;
   return rows.map((r) => r.directory_id);
 }
+

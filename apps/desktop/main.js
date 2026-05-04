@@ -1,45 +1,49 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, Notification } = require("electron");
 const path = require("node:path");
-const { autoUpdater } = require("electron-updater");
 
-// IPC: o web app chama window.electronAPI.checkForUpdates() pra
-// verificar versao mais recente. Retorna {status, message} pra mostrar
-// na pagina de Configuracoes > Atualizacoes.
-//
-// Como o repo eh PRIVADO, electron-updater nao consegue chamar
-// github.com/.../releases.atom (404 sem auth — feed XML do GitHub
-// ignora token na URL). Em vez disso, chamamos nosso proxy interno
-// /api/latest-release que autentica server-side com GITHUB_TOKEN e
-// retorna info do release pelo REST API. Comparamos versao manualmente.
-//
-// Se o repo virar publico OU configurarmos provider custom (S3/Blob),
-// podemos voltar pra autoUpdater.checkForUpdates() pra download
-// silencioso de fato.
+// Atualizacoes manuais (sem download/instalacao automatica) — comportamento
+// igual ao FABD Planner: o usuario clica "Verificar atualizacoes" em
+// Configuracoes; se houver nova versao, ele baixa o instalador manualmente
+// pelo link do release. Adicionalmente, no startup fazemos um check
+// silencioso e disparamos uma Notification nativa do SO se houver nova versao.
+
+const isDev = process.env.FABD_DEV === "1";
+const APP_URL = isDev ? "http://localhost:3000" : "https://fluxos.fabd.com.br";
+
+/** @type {BrowserWindow | null} */
+let mainWindow = null;
+
+async function fetchLatestRelease() {
+  const response = await fetch(`${APP_URL}/api/latest-release`);
+  if (!response.ok) {
+    throw new Error(`Endpoint retornou ${response.status}`);
+  }
+  return response.json();
+}
+
+function compareVersion(latest, current) {
+  const norm = (v) => String(v || "").replace(/^v/, "").trim();
+  return norm(latest) !== norm(current) ? "outdated" : "current";
+}
+
 ipcMain.handle("check-for-updates", async () => {
-  const APP_URL = isDev ? "http://localhost:3000" : "https://fluxos.fabd.com.br";
   try {
-    const response = await fetch(`${APP_URL}/api/latest-release`);
-    if (!response.ok) {
-      return {
-        status: "error",
-        message: `Endpoint retornou ${response.status}`,
-      };
-    }
-    const data = await response.json();
+    const data = await fetchLatestRelease();
     const latest = String(data.tag_name || "").replace(/^v/, "");
     const current = app.getVersion();
     if (!latest) {
       return { status: "no-result", message: "Sem release publicado ainda." };
     }
-    if (latest === current) {
+    if (compareVersion(latest, current) === "current") {
       return {
         status: "ok",
         message: `Voce esta na versao mais recente (v${current}).`,
+        version: latest,
       };
     }
     return {
       status: "update-available",
-      message: `Atualizacao disponivel: v${latest} (atual v${current}). Baixe o instalador em ${data.html_url}`,
+      message: `Atualizacao disponivel: v${latest} (atual v${current}).`,
       version: latest,
       url: data.html_url,
     };
@@ -50,12 +54,6 @@ ipcMain.handle("check-for-updates", async () => {
     };
   }
 });
-
-const isDev = process.env.FABD_DEV === "1";
-const APP_URL = isDev ? "http://localhost:3000" : "https://fluxos.fabd.com.br";
-
-/** @type {BrowserWindow | null} */
-let mainWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -76,7 +74,6 @@ function createWindow() {
 
   mainWindow.loadURL(APP_URL);
 
-  // abrir links externos no browser, nao na janela
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(APP_URL)) return { action: "allow" };
     shell.openExternal(url);
@@ -124,7 +121,11 @@ function buildMenu() {
       submenu: [
         {
           label: "Verificar atualizacoes",
-          click: () => autoUpdater.checkForUpdatesAndNotify(),
+          click: () => {
+            if (!mainWindow) return;
+            mainWindow.loadURL(`${APP_URL}/app`);
+            shell.openExternal(`${APP_URL}/app`);
+          },
         },
         {
           label: "Site",
@@ -136,15 +137,38 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+async function silentStartupCheck() {
+  if (isDev) return;
+  try {
+    const data = await fetchLatestRelease();
+    const latest = String(data.tag_name || "").replace(/^v/, "");
+    const current = app.getVersion();
+    if (!latest || compareVersion(latest, current) === "current") return;
+    if (!Notification.isSupported()) return;
+    const notif = new Notification({
+      title: "FABD Fluxos — atualizacao disponivel",
+      body: `Nova versao v${latest} foi publicada (voce esta na v${current}). Clique para baixar.`,
+      silent: false,
+    });
+    notif.on("click", () => {
+      shell.openExternal(data.html_url || `${APP_URL}/app`);
+    });
+    notif.show();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update-available", {
+        version: latest,
+        url: data.html_url,
+      });
+    }
+  } catch (err) {
+    console.error("[updates] startup check falhou:", err?.message || err);
+  }
+}
+
 app.whenReady().then(() => {
   buildMenu();
   createWindow();
-
-  if (!isDev) {
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.error("[updater] erro ao checar updates:", err);
-    });
-  }
+  setTimeout(silentStartupCheck, 4000);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -153,17 +177,4 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
-});
-
-// Auto-updater eventos
-autoUpdater.on("update-available", (info) => {
-  console.log("[updater] update disponivel", info?.version);
-});
-
-autoUpdater.on("update-downloaded", (info) => {
-  console.log("[updater] update baixado, sera aplicado ao sair", info?.version);
-});
-
-autoUpdater.on("error", (err) => {
-  console.error("[updater] erro:", err);
 });

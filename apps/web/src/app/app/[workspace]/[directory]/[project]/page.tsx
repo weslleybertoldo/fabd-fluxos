@@ -46,24 +46,30 @@ export default async function ProjectPage({
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: dir } = await supabase
-    .from("directories")
-    .select("*")
-    .eq("workspace_id", ctx.workspace.id)
-    .eq("slug", dirSlug)
-    .maybeSingle();
-  const directory = dir as unknown as DirectoryRow | null;
+  // Onda 1 (paralelo): directory + visibleIds + members — todas independentes
+  const [dirRes, visibleIds, membersRes] = await Promise.all([
+    supabase
+      .from("directories")
+      .select("*")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("slug", dirSlug)
+      .maybeSingle(),
+    getVisibleDirectoryIds(supabase, ctx.member.id, ctx.member.role),
+    supabase
+      .from("workspace_members")
+      .select("user_id, google_full_name, google_avatar_url, role, status")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("status", "active")
+      .order("google_full_name", { ascending: true }),
+  ]);
+  const directory = dirRes.data as unknown as DirectoryRow | null;
   if (!directory) notFound();
 
-  const visibleIds = await getVisibleDirectoryIds(
-    supabase,
-    ctx.member.id,
-    ctx.member.role,
-  );
   if (visibleIds !== null && !visibleIds.includes(directory.id)) {
     redirect(`/app/${ctx.workspace.slug}?error=forbidden_directory`);
   }
 
+  // Onda 2: project (depende de directory.id)
   const { data: proj } = await supabase
     .from("projects")
     .select("*")
@@ -73,14 +79,7 @@ export default async function ProjectPage({
   const project = proj as unknown as ProjectRow | null;
   if (!project) notFound();
 
-  // Members ativos pra picker de responsavel
-  const { data: membersData } = await supabase
-    .from("workspace_members")
-    .select("user_id, google_full_name, google_avatar_url, role, status")
-    .eq("workspace_id", ctx.workspace.id)
-    .eq("status", "active")
-    .order("google_full_name", { ascending: true });
-  const allMembers = (membersData ?? []) as unknown as Pick<
+  const allMembers = (membersRes.data ?? []) as unknown as Pick<
     WorkspaceMemberRow,
     "user_id" | "google_full_name" | "google_avatar_url" | "role" | "status"
   >[];
@@ -108,52 +107,53 @@ export default async function ProjectPage({
       ? flowStatusParam
       : "active";
 
-  const { data: flowsData } = await supabase
-    .from("flows")
-    .select("*")
-    .eq("project_id", project.id)
-    .eq("status", flowStatus)
-    .order("order_index", { ascending: true })
-    .order("created_at", { ascending: false });
-  const flows = (flowsData ?? []) as unknown as FlowRow[];
+  // Onda 3 (paralelo): flows + reminders + lists — todas dependem so de project.id
+  const [flowsRes, remindersRes, listsRes] = await Promise.all([
+    supabase
+      .from("flows")
+      .select("*")
+      .eq("project_id", project.id)
+      .eq("status", flowStatus)
+      .order("order_index", { ascending: true })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("reminders")
+      .select("*")
+      .eq("project_id", project.id)
+      .order("completed_at", { ascending: true, nullsFirst: true })
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("simple_lists")
+      .select("*")
+      .eq("project_id", project.id)
+      .order("order_index", { ascending: true }),
+  ]);
+  const flows = (flowsRes.data ?? []) as unknown as FlowRow[];
+  const reminders = (remindersRes.data ?? []) as unknown as ReminderRow[];
+  const lists = (listsRes.data ?? []) as unknown as SimpleListRow[];
 
-  // Bulk load phases de todos os flows pra renderizar mini-fases nas colunas
+  // Onda 4 (paralelo): phases (flowIds) + items (listIds) — independentes entre si
   const flowIds = flows.map((f) => f.id);
-  const { data: allPhasesData } = flowIds.length
-    ? await supabase
-        .from("phases")
-        .select("*")
-        .in("flow_id", flowIds)
-        .order("order_index", { ascending: true })
-    : { data: [] };
-  const allPhases = (allPhasesData ?? []) as unknown as PhaseRow[];
-
-  // Reminders + simple_lists + items do projeto
-  const { data: remindersData } = await supabase
-    .from("reminders")
-    .select("*")
-    .eq("project_id", project.id)
-    .order("completed_at", { ascending: true, nullsFirst: true })
-    .order("due_date", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false });
-  const reminders = (remindersData ?? []) as unknown as ReminderRow[];
-
-  const { data: listsData } = await supabase
-    .from("simple_lists")
-    .select("*")
-    .eq("project_id", project.id)
-    .order("order_index", { ascending: true });
-  const lists = (listsData ?? []) as unknown as SimpleListRow[];
-
   const listIds = lists.map((l) => l.id);
-  const { data: itemsData } = listIds.length
-    ? await supabase
-        .from("simple_list_items")
-        .select("*")
-        .in("list_id", listIds)
-        .order("order_index", { ascending: true })
-    : { data: [] };
-  const items = (itemsData ?? []) as unknown as SimpleListItemRow[];
+  const [phasesRes, itemsRes] = await Promise.all([
+    flowIds.length
+      ? supabase
+          .from("phases")
+          .select("*")
+          .in("flow_id", flowIds)
+          .order("order_index", { ascending: true })
+      : Promise.resolve({ data: [] }),
+    listIds.length
+      ? supabase
+          .from("simple_list_items")
+          .select("*")
+          .in("list_id", listIds)
+          .order("order_index", { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ]);
+  const allPhases = (phasesRes.data ?? []) as unknown as PhaseRow[];
+  const items = (itemsRes.data ?? []) as unknown as SimpleListItemRow[];
   const itemsByList: Record<string, SimpleListItemRow[]> = {};
   for (const it of items) {
     if (!itemsByList[it.list_id]) itemsByList[it.list_id] = [];
@@ -466,7 +466,10 @@ export default async function ProjectPage({
         workspaceSlug={ctx.workspace.slug}
         directorySlug={directory.slug}
         projectId={project.id}
-        canCreate={project.status === "active"}
+        canCreate={
+          project.status === "active" &&
+          (ctx.member.role === "admin" || ctx.member.role === "diretor")
+        }
         reminders={reminders}
         lists={lists}
         itemsByList={itemsByList}
