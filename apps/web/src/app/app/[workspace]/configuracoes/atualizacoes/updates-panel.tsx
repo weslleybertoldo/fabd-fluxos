@@ -179,6 +179,9 @@ function DownloadLinksCard() {
   const exeUrl = release && latest
     ? `${release.html_url.replace("/tag/", "/download/")}/FABD-Fluxos-Setup-${latest}.exe`
     : "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
+  const releasePageUrl =
+    release?.html_url ??
+    "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <p className="text-sm font-semibold text-slate-900">Baixar app</p>
@@ -189,8 +192,7 @@ function DownloadLinksCard() {
       <div className="mt-3 flex flex-wrap gap-2">
         <a
           href={apkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          download={`FABD-Fluxos-${latest || "latest"}.apk`}
           className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -198,14 +200,27 @@ function DownloadLinksCard() {
         </a>
         <a
           href={exeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          download={`FABD-Fluxos-Setup-${latest || "latest"}.exe`}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
           Baixar Windows (.exe)
         </a>
+        <a
+          href={releasePageUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+          Ver no GitHub
+        </a>
       </div>
+      <p className="mt-3 text-[11px] text-slate-500">
+        Se o navegador bloquear o download direto (.apk pode aparecer como
+        &quot;arquivo perigoso&quot;), clique em <strong>Ver no GitHub</strong> e
+        baixe pela pagina do release.
+      </p>
     </div>
   );
 }
