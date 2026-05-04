@@ -26,6 +26,8 @@ function compareVersion(latest, current) {
   return norm(latest) !== norm(current) ? "outdated" : "current";
 }
 
+ipcMain.handle("app:get-version", () => app.getVersion());
+
 ipcMain.handle("check-for-updates", async () => {
   try {
     const data = await fetchLatestRelease();

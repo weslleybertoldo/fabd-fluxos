@@ -66,6 +66,9 @@ export function UpdatesPanel({ webVersion }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [desktopMsg, setDesktopMsg] = useState<string | null>(null);
+  // No desktop, queremos a versao FISICA do .exe (app.getVersion via IPC)
+  // — nao a do site, que muda toda vez que o Vercel re-deploya.
+  const [installedVersion, setInstalledVersion] = useState<string>(webVersion);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -81,6 +84,16 @@ export function UpdatesPanel({ webVersion }: Props) {
       (window as unknown as { electronAPI?: unknown }).electronAPI
     ) {
       setPlatform("desktop");
+      // Pega a versao real do .exe via IPC. Se o IPC nao existir (versao
+      // mais antiga do .exe sem getInstalledVersion), cai pro webVersion.
+      const api = (window as unknown as {
+        electronAPI?: { getInstalledVersion?: () => Promise<string> };
+      }).electronAPI;
+      if (api?.getInstalledVersion) {
+        api.getInstalledVersion().then((v) => {
+          if (v) setInstalledVersion(v);
+        }).catch(() => {});
+      }
     } else {
       setPlatform("web");
     }
@@ -148,7 +161,7 @@ export function UpdatesPanel({ webVersion }: Props) {
               Versao instalada
             </p>
             <p className="mt-1 text-2xl font-bold text-slate-900">
-              v{webVersion}
+              v{installedVersion}
             </p>
             <p className="mt-1 text-xs text-slate-600">
               Plataforma: <span className="font-medium">{platformLabels[platform]}</span>
@@ -188,7 +201,7 @@ export function UpdatesPanel({ webVersion }: Props) {
         <ReleaseCard
           platform={platform}
           release={release}
-          currentVersion={webVersion}
+          currentVersion={installedVersion}
         />
       ) : null}
 

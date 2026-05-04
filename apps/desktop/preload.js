@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("fabdDesktop", {
 
 contextBridge.exposeInMainWorld("electronAPI", {
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  getInstalledVersion: () => ipcRenderer.invoke("app:get-version"),
   onUpdateAvailable: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("update-available", listener);
