@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@fabd-fluxos/db/browser";
+import { isNativePlatform, openExternalUrl } from "@/lib/native";
 
 export function LoginButton() {
   const [loading, setLoading] = useState(false);
@@ -12,15 +13,27 @@ export function LoginButton() {
     setError(null);
     try {
       const supabase = createSupabaseBrowserClient();
-      const redirectTo = `${window.location.origin}/auth/callback`;
-      const { error: authError } = await supabase.auth.signInWithOAuth({
+      const native = isNativePlatform();
+      // Native (APK): redireciona pra deep link `fabd-fluxos://auth/callback`
+      // que o AndroidManifest captura. O Browser nativo (Custom Tab) abre o
+      // OAuth do Google, e ao terminar o app eh reaberto via deep link.
+      // Web/Desktop: redireciona pra rota Next normal `/auth/callback`.
+      const redirectTo = native
+        ? "fabd-fluxos://auth/callback"
+        : `${window.location.origin}/auth/callback`;
+      const { data, error: authError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo,
           queryParams: { access_type: "offline", prompt: "consent" },
+          skipBrowserRedirect: native, // no native, abrimos manualmente em Custom Tab
         },
       });
       if (authError) throw authError;
+      if (native && data?.url) {
+        await openExternalUrl(data.url);
+        // o flow continua no listener de deep link (NativeAuthBridge)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro inesperado ao iniciar login");
       setLoading(false);
