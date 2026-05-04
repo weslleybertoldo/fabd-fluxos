@@ -34,17 +34,28 @@ function findAsset(release: ReleaseInfo | null, suffix: string): string | null {
   return a?.url ?? null;
 }
 
+function isMobileBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+  return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
 /**
- * Click handler universal pra download. No APK Capacitor, abre via
- * Browser nativo (Custom Tab) que sabe lidar com download — o WebView
- * sozinho nao baixa. Em web/desktop, deixa o navegador navegar normal
- * (target=_blank no <a> faz o trabalho).
+ * Click handler universal pra download.
+ * - APK Capacitor (dentro do app): abre Custom Tab via @capacitor/browser.
+ * - Mobile Chrome (Android/iOS): redireciona pra pagina do release no GitHub
+ *   em vez do asset direto, porque Chrome Android bloqueia .apk silencioso.
+ * - Desktop/PWA standalone: deixa o navegador baixar direto (target=_blank).
  */
-function handleDownloadClick(url: string) {
+function handleDownloadClick(directUrl: string, releasePageUrl: string) {
   return async (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (isNativePlatform()) {
       e.preventDefault();
-      await openExternalUrl(url);
+      await openExternalUrl(directUrl);
+      return;
+    }
+    if (isMobileBrowser()) {
+      e.preventDefault();
+      window.location.href = releasePageUrl;
     }
   };
 }
@@ -224,7 +235,7 @@ function DownloadLinksCard() {
           download
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleDownloadClick(apkUrl)}
+          onClick={handleDownloadClick(apkUrl, releasePageUrl)}
           className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -235,7 +246,7 @@ function DownloadLinksCard() {
           download
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleDownloadClick(exeUrl)}
+          onClick={handleDownloadClick(exeUrl, releasePageUrl)}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -246,7 +257,7 @@ function DownloadLinksCard() {
           href={releasePageUrl}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleDownloadClick(releasePageUrl)}
+          onClick={handleDownloadClick(releasePageUrl, releasePageUrl)}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
