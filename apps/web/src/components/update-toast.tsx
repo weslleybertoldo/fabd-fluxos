@@ -8,6 +8,7 @@ type UpdatePayload = { version?: string; url?: string };
 type ElectronAPI = {
   onUpdateAvailable?: (cb: (payload: UpdatePayload) => void) => () => void;
   getInstalledVersion?: () => Promise<string>;
+  openExternal?: (url: string) => Promise<{ ok: boolean }>;
 };
 
 /**
@@ -126,12 +127,20 @@ export function UpdateToast() {
         : releasePageUrl;
 
   async function openDownload() {
+    const electronAPI = (window as unknown as { electronAPI?: ElectronAPI })
+      .electronAPI;
+    const fullUrl = downloadUrl.startsWith("/")
+      ? `${window.location.origin}${downloadUrl}`
+      : downloadUrl;
+
     if (isNativePlatform()) {
-      // No Capacitor, precisa URL absoluta + Custom Tab
-      const fullUrl = downloadUrl.startsWith("/")
-        ? `${window.location.origin}${downloadUrl}`
-        : downloadUrl;
+      // Capacitor: Custom Tab (Chrome real)
       await openExternalUrl(fullUrl);
+    } else if (electronAPI?.openExternal) {
+      // Desktop: shell.openExternal abre no navegador do SO (Chrome/Edge),
+      // que baixa direto e fecha a aba. Evita abrir BrowserWindow do
+      // Electron que ficava aberta apos download.
+      await electronAPI.openExternal(fullUrl);
     } else {
       window.open(downloadUrl, "_blank", "noopener,noreferrer");
     }

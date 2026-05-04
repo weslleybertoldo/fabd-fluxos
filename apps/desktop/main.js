@@ -28,6 +28,14 @@ function compareVersion(latest, current) {
 
 ipcMain.handle("app:get-version", () => app.getVersion());
 
+ipcMain.handle("app:open-external", async (_event, url) => {
+  if (typeof url !== "string" || !url.startsWith("http")) {
+    return { ok: false, error: "URL invalida" };
+  }
+  await shell.openExternal(url);
+  return { ok: true };
+});
+
 ipcMain.handle("check-for-updates", async () => {
   try {
     const data = await fetchLatestRelease();

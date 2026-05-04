@@ -49,6 +49,18 @@ jobs:
       - name: Sync Capacitor
         run: pnpm mobile:sync
 
+      - name: Atualiza versionName/versionCode no build.gradle
+        run: |
+          VERSION="${{ steps.version.outputs.current }}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          # versionCode precisa ser inteiro crescente — formula MMmmpp:
+          # 1.9.0 -> 10900, 1.10.0 -> 11000, 2.0.0 -> 20000
+          VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + (PATCH:-0) ))
+          echo "Versao: $VERSION (code $VERSION_CODE)"
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" apps/mobile/android/app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION\"/" apps/mobile/android/app/build.gradle
+          grep -E "versionCode|versionName" apps/mobile/android/app/build.gradle | head -2
+
       - name: Make gradlew executable
         run: chmod +x apps/mobile/android/gradlew
 
