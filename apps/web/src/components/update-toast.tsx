@@ -25,9 +25,12 @@ type ElectronAPI = {
  *
  * Montado no RootLayout pra estar sempre ativo.
  */
+type Platform = "desktop" | "android" | "ios" | "web";
+
 export function UpdateToast() {
   const [info, setInfo] = useState<UpdatePayload | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [platform, setPlatform] = useState<Platform>("web");
 
   // Listener do evento IPC do Electron
   useEffect(() => {
@@ -55,6 +58,15 @@ export function UpdateToast() {
       .electronAPI;
     const isElectron = Boolean(electronAPI?.getInstalledVersion);
     const isCapacitor = isNativePlatform();
+
+    if (isElectron) setPlatform("desktop");
+    else if (isCapacitor) {
+      const cap = (window as unknown as {
+        Capacitor?: { getPlatform?: () => string };
+      }).Capacitor;
+      const p = cap?.getPlatform?.();
+      setPlatform(p === "ios" ? "ios" : "android");
+    }
 
     if (!isElectron && !isCapacitor) return;
 
@@ -100,14 +112,28 @@ export function UpdateToast() {
 
   if (!info || dismissed) return null;
 
-  const releaseUrl =
+  // Asset URL especifico por plataforma:
+  // - Desktop -> /api/download/exe (proxy server-side, mesma origem)
+  // - Android -> /api/download/apk (idem)
+  // - Web/iOS -> pagina da release no GitHub (fallback)
+  const releasePageUrl =
     info.url ?? "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
+  const downloadUrl =
+    platform === "desktop"
+      ? "/api/download/exe"
+      : platform === "android"
+        ? "/api/download/apk"
+        : releasePageUrl;
 
   async function openDownload() {
     if (isNativePlatform()) {
-      await openExternalUrl(releaseUrl);
+      // No Capacitor, precisa URL absoluta + Custom Tab
+      const fullUrl = downloadUrl.startsWith("/")
+        ? `${window.location.origin}${downloadUrl}`
+        : downloadUrl;
+      await openExternalUrl(fullUrl);
     } else {
-      window.open(releaseUrl, "_blank", "noopener,noreferrer");
+      window.open(downloadUrl, "_blank", "noopener,noreferrer");
     }
     setDismissed(true);
   }
@@ -115,10 +141,10 @@ export function UpdateToast() {
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-lg">
       <p className="text-sm font-semibold text-blue-900">
-        Nova versao disponivel{info.version ? ` (v${info.version})` : ""}
+        Nova versão disponível{info.version ? ` (v${info.version})` : ""}
       </p>
       <p className="mt-1 text-xs text-blue-800">
-        Voce pode escolher quando atualizar — nada eh baixado automaticamente.
+        Nada é baixado automaticamente.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
@@ -126,7 +152,11 @@ export function UpdateToast() {
           onClick={openDownload}
           className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
         >
-          Baixar nova versao
+          {platform === "desktop"
+            ? "Baixar Windows (.exe)"
+            : platform === "android"
+              ? "Baixar Android (APK)"
+              : "Ver no GitHub"}
         </button>
         <button
           type="button"
