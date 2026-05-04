@@ -34,28 +34,24 @@ function findAsset(release: ReleaseInfo | null, suffix: string): string | null {
   return a?.url ?? null;
 }
 
-function isMobileBrowser(): boolean {
-  if (typeof window === "undefined") return false;
-  return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-}
-
 /**
  * Click handler universal pra download.
  * - APK Capacitor (dentro do app): abre Custom Tab via @capacitor/browser.
- * - Mobile Chrome (Android/iOS): redireciona pra pagina do release no GitHub
- *   em vez do asset direto, porque Chrome Android bloqueia .apk silencioso.
- * - Desktop/PWA standalone: deixa o navegador baixar direto (target=_blank).
+ *   O Custom Tab eh Chrome real, sabe lidar com Content-Disposition.
+ * - Web/Mobile Chrome/Desktop: deixa o navegador baixar direto. Como os URLs
+ *   apontam pro proxy server-side (/api/download/apk|exe), Chrome trata como
+ *   same-origin e nao bloqueia. target=_blank no <a> garante nova aba pra
+ *   feedback visual claro.
  */
-function handleDownloadClick(directUrl: string, releasePageUrl: string) {
+function handleDownloadClick(directUrl: string) {
   return async (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (isNativePlatform()) {
       e.preventDefault();
-      await openExternalUrl(directUrl);
-      return;
-    }
-    if (isMobileBrowser()) {
-      e.preventDefault();
-      window.location.href = releasePageUrl;
+      // Se for URL relativa, prepende origin
+      const fullUrl = directUrl.startsWith("/")
+        ? `${window.location.origin}${directUrl}`
+        : directUrl;
+      await openExternalUrl(fullUrl);
     }
   };
 }
@@ -219,8 +215,10 @@ function DownloadLinksCard() {
   }, []);
   const latest = release?.tag_name?.replace(/^v/, "") ?? "";
   const fallbackUrl = "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
-  const apkUrl = findAsset(release, ".apk") ?? fallbackUrl;
-  const exeUrl = findAsset(release, ".exe") ?? fallbackUrl;
+  // Mesma origem (proxy server-side) — Chrome Android nao bloqueia download
+  // como faz com asset cross-origin do GitHub.
+  const apkUrl = "/api/download/apk";
+  const exeUrl = "/api/download/exe";
   const releasePageUrl = release?.html_url ?? fallbackUrl;
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -235,7 +233,7 @@ function DownloadLinksCard() {
           download
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleDownloadClick(apkUrl, releasePageUrl)}
+          onClick={handleDownloadClick(apkUrl)}
           className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -246,7 +244,7 @@ function DownloadLinksCard() {
           download
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleDownloadClick(exeUrl, releasePageUrl)}
+          onClick={handleDownloadClick(exeUrl)}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -257,7 +255,7 @@ function DownloadLinksCard() {
           href={releasePageUrl}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleDownloadClick(releasePageUrl, releasePageUrl)}
+          onClick={handleDownloadClick(releasePageUrl)}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
@@ -446,8 +444,8 @@ function ReleaseCard({
 }) {
   const latest = release.tag_name.replace(/^v/, "");
   const isOutdated = latest !== currentVersion;
-  const apkAsset = findAsset(release, ".apk") ?? release.html_url;
-  const exeAsset = findAsset(release, ".exe") ?? release.html_url;
+  const apkAsset = "/api/download/apk";
+  const exeAsset = "/api/download/exe";
 
   return (
     <div
