@@ -1,0 +1,36 @@
+name: Keep Supabase Active
+
+on:
+  schedule:
+    # A cada 5 dias as 9h UTC (antes do limite de 7 dias)
+    - cron: '0 9 */5 * *'
+  workflow_dispatch:
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping runtime do projeto (auth/v1/health)
+        # Trafego HTTP no host <ref>.supabase.co — exatamente o tipo de
+        # trafego que uso normal faz. Anon key e publica (vai pro frontend).
+        run: |
+          set -e
+          RES=$(curl -s -w "\n%{http_code}" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5leHZmbGRkbXVidGNpemVydmRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczOTYyODMsImV4cCI6MjA5Mjk3MjI4M30.a6OUNyfJpyGoiRRU1QG0P-1-3RftDhWXiJsPEjgOFoM" \
+            "https://nexvflddmubtcizervda.supabase.co/auth/v1/health")
+          CODE=$(echo "$RES" | tail -1)
+          echo "fabd-fluxos runtime ping: HTTP $CODE"
+          [ "$CODE" = "200" ] || (echo "ERRO" && exit 1)
+
+      - name: Executar SQL real no Postgres (camada extra)
+        run: |
+          set -e
+          RES=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_PAT }}" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"SELECT 1 as alive, now() as ts"}' \
+            "https://api.supabase.com/v1/projects/nexvflddmubtcizervda/database/query")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "fabd-fluxos SQL ping: HTTP $CODE | $BODY"
+          [ "$CODE" = "200" ] || [ "$CODE" = "201" ] || (echo "ERRO" && exit 1)
