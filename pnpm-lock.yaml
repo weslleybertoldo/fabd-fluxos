@@ -41,6 +41,9 @@ importers:
       '@capacitor/core':
         specifier: ^7.0.0
         version: 7.6.2
+      '@capacitor/local-notifications':
+        specifier: ^7.0.0
+        version: 7.0.6(@capacitor/core@7.6.2)
       '@capacitor/preferences':
         specifier: ^7.0.0
         version: 7.0.4(@capacitor/core@7.6.2)
@@ -139,6 +142,9 @@ importers:
       '@capacitor/browser':
         specifier: ^7.0.0
         version: 7.0.5(@capacitor/core@7.6.2)
+      '@capacitor/local-notifications':
+        specifier: ^7.0.0
+        version: 7.0.6(@capacitor/core@7.6.2)
       '@tailwindcss/postcss':
         specifier: ^4.0.0
         version: 4.2.4
@@ -214,6 +220,11 @@ packages:
 
   '@capacitor/core@7.6.2':
     resolution: {integrity: sha512-8HRKEUlYpCOeRec8bCHZwEA4o/E2q5dhHSd0v/Cr6+ume08fZY/gniF+ZCKF+6DO0T/nRaBeNRQn6Up+45J1mg==}
+
+  '@capacitor/local-notifications@7.0.6':
+    resolution: {integrity: sha512-RuZQ9P5aAlw6VU2i0i6g4i1XYZbbeDE9oaBg87gggHaUUscX7b1lltTlC1t11/JCPoyjECnZ/N8xfDNZ26hKhw==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@capacitor/preferences@7.0.4':
     resolution: {integrity: sha512-TJhkwaI2RCs/iDC9PjNczZV4h6JM4gUtTuKMeFdy0OwGgFEHf4TrtW2mFMc1TnPDalYQ91p9NT+UKgiJs9/xtg==}
@@ -4236,6 +4247,10 @@ snapshots:
   '@capacitor/core@7.6.2':
     dependencies:
       tslib: 2.8.1
+
+  '@capacitor/local-notifications@7.0.6(@capacitor/core@7.6.2)':
+    dependencies:
+      '@capacitor/core': 7.6.2
 
   '@capacitor/preferences@7.0.4(@capacitor/core@7.6.2)':
     dependencies:

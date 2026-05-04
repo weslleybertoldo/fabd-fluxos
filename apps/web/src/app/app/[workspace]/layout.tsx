@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import { FcmRegister } from "@/components/fcm-register";
+import { LocalNotificationsSync } from "@/components/local-notifications-sync";
 import type { NotificationRow } from "@/lib/types";
 
 export default async function WorkspaceLayout({
@@ -33,6 +34,12 @@ export default async function WorkspaceLayout({
   return (
     <div className="space-y-8">
       <FcmRegister />
+      <LocalNotificationsSync
+        userId={ctx.member.user_id}
+        workspaceSlug={ctx.workspace.slug}
+        workspaceMemberId={ctx.member.id}
+        role={ctx.member.role}
+      />
       <RealtimeWatcher
         channelName={`notifs-${ctx.workspace.id}-${ctx.member.user_id}`}
         subscriptions={[

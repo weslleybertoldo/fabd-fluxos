@@ -1,6 +1,5 @@
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { UpdatesPanel } from "./updates-panel";
-import { FcmStatus } from "@/components/fcm-status";
 import packageJson from "../../../../../../package.json";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +21,6 @@ export default async function AtualizacoesPage({
         <strong>Android</strong>.
       </p>
       <UpdatesPanel webVersion={webVersion} />
-      <FcmStatus />
     </div>
   );
 }
