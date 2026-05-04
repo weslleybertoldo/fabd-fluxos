@@ -206,6 +206,7 @@ function DownloadLinksCard() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
           Baixar Windows (.exe)
         </a>
+        <InstallPwaButton />
         <a
           href={releasePageUrl}
           target="_blank"
@@ -217,10 +218,172 @@ function DownloadLinksCard() {
         </a>
       </div>
       <p className="mt-3 text-[11px] text-slate-500">
-        Se o navegador bloquear o download direto (.apk pode aparecer como
-        &quot;arquivo perigoso&quot;), clique em <strong>Ver no GitHub</strong> e
-        baixe pela pagina do release.
+        <strong>PWA</strong> eh a forma mais rapida de usar no celular: instala
+        em 2 toques, sem APK. Se o navegador bloquear o download direto (.apk
+        pode aparecer como &quot;arquivo perigoso&quot;), clique em{" "}
+        <strong>Ver no GitHub</strong> e baixe pela pagina do release.
       </p>
+    </div>
+  );
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+}
+
+type DevicePlatform = "android" | "ios" | "desktop" | "other";
+
+function InstallPwaButton() {
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [device, setDevice] = useState<DevicePlatform>("other");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ua = navigator.userAgent.toLowerCase();
+    const iOS =
+      /iphone|ipad|ipod/.test(ua) ||
+      (ua.includes("mac") && "ontouchend" in document);
+    const android = /android/.test(ua);
+    if (iOS) setDevice("ios");
+    else if (android) setDevice("android");
+    else setDevice("desktop");
+
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone ===
+        true;
+    if (standalone) setInstalled(true);
+
+    const onBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setInstallPrompt(null);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  if (installed) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+        PWA instalado
+      </span>
+    );
+  }
+
+  function handleClick() {
+    if (installPrompt) {
+      installPrompt.prompt();
+      installPrompt.userChoice.then(({ outcome }) => {
+        if (outcome === "accepted") setInstallPrompt(null);
+      });
+      return;
+    }
+    setShowHelp(true);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        className="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
+        Baixar PWA (celular)
+      </button>
+      {showHelp ? (
+        <PwaHelpModal device={device} onClose={() => setShowHelp(false)} />
+      ) : null}
+    </>
+  );
+}
+
+function PwaHelpModal({
+  device,
+  onClose,
+}: {
+  device: DevicePlatform;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
+        <header>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Instalar PWA no celular
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            PWA nao tem arquivo pra baixar — eh o proprio site que vira app.
+          </p>
+        </header>
+
+        {device === "ios" ? (
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+            <li>
+              Abra <code>fluxos.fabd.com.br</code> no <strong>Safari</strong>{" "}
+              (precisa ser Safari, nao Chrome).
+            </li>
+            <li>
+              Toque no botao <strong>Compartilhar</strong> (quadrado com seta
+              pra cima, na barra inferior).
+            </li>
+            <li>
+              Role e toque em <strong>Adicionar a Tela de Inicio</strong>.
+            </li>
+            <li>Confirme — vai aparecer um icone na tela inicial.</li>
+          </ol>
+        ) : (
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+            <li>
+              Abra <code>fluxos.fabd.com.br</code> no <strong>Chrome</strong> do
+              celular.
+            </li>
+            <li>
+              Toque no menu <strong>⋮</strong> (canto superior direito).
+            </li>
+            <li>
+              Toque em <strong>Instalar app</strong> (ou{" "}
+              <em>Adicionar a tela inicial</em>, depende da versao).
+            </li>
+            <li>Confirme — vai aparecer um icone na tela inicial.</li>
+          </ol>
+        )}
+
+        <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+          Apos instalar, o PWA mantem voce logado, recebe notificacoes via Web
+          Push e abre em modo standalone (sem barra do navegador).
+        </p>
+
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Entendi
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
