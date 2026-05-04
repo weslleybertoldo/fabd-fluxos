@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { NativeAuthBridge } from "@/components/native-auth-bridge";
+import { NativeNotificationsBootstrap } from "@/components/native-notifications-bootstrap";
 import { UpdateToast } from "@/components/update-toast";
 
 const inter = Inter({
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-dvh font-sans antialiased">
         <NativeAuthBridge />
+        <NativeNotificationsBootstrap />
         <UpdateToast />
         <Providers>{children}</Providers>
       </body>
