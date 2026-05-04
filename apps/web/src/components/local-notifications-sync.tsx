@@ -11,7 +11,6 @@ import {
 interface Props {
   userId: string;
   workspaceSlug: string;
-  workspaceMemberId: string;
   role: "admin" | "diretor" | "membro";
 }
 
@@ -45,17 +44,19 @@ interface DirectoryRow {
  * Sincroniza notificacoes locais (Capacitor) com as fases ativas que o
  * user logado tem direito a receber, seguindo a regra:
  *
- * - **Admin**: TODAS as fases do workspace (independente de diretoria/projeto).
- * - **Diretor**: SO fases dos projetos onde ele eh `responsible_user_id`.
- * - **Membro**: fases dos projetos das diretorias liberadas pra ele
- *   (via `member_directory_access`); sem restricao = todas.
+ * - **Admin**: TODAS as fases do workspace
+ * - **Diretor / Membro**: APENAS fases onde eh responsavel direto
+ *   (phase_responsibles) OU eh responsavel do projeto que contem a fase
+ *   (projects.responsible_user_id)
+ *
+ * Mesma regra do cron `/api/cron/notify-due-phases` (in-app + email +
+ * web push + FCM), garantindo consistencia entre canais.
  *
  * Web/Desktop: nao faz nada (Capacitor.isNativePlatform retorna false).
  */
 export function LocalNotificationsSync({
   userId,
   workspaceSlug,
-  workspaceMemberId,
   role,
 }: Props) {
   useEffect(() => {
@@ -99,50 +100,16 @@ export function LocalNotificationsSync({
         const projects = (projs ?? []) as ProjectRow[];
         if (cancelled || projects.length === 0) return;
 
-        // Determina quais project_ids o user recebe notif, conforme regra:
-        let allowedProjectIds: Set<string>;
-
-        if (role === "admin") {
-          // Admin: tudo
-          allowedProjectIds = new Set(projects.map((p) => p.id));
-        } else if (role === "diretor") {
-          // Diretor: so projetos onde eh responsavel
-          allowedProjectIds = new Set(
-            projects
-              .filter((p) => p.responsible_user_id === userId)
-              .map((p) => p.id),
-          );
-        } else {
-          // Membro: projetos das diretorias liberadas (ou todas se sem restricao)
-          const { data: dirAccess } = await supabase
-            .from("member_directory_access")
-            .select("directory_id")
-            .eq("workspace_member_id", workspaceMemberId);
-          const accessRows = (dirAccess ?? []) as Array<{ directory_id: string }>;
-          const visibleDirIds = accessRows.length
-            ? new Set(accessRows.map((r) => r.directory_id))
-            : null; // null = sem restricao = todas
-
-          allowedProjectIds = new Set(
-            projects
-              .filter(
-                (p) =>
-                  visibleDirIds === null || visibleDirIds.has(p.directory_id),
-              )
-              .map((p) => p.id),
-          );
-        }
-
-        if (cancelled || allowedProjectIds.size === 0) return;
-
         const projById = new Map(projects.map((p) => [p.id, p]));
 
-        // Flows ativos dos projetos permitidos
-        const allowedProjArr = Array.from(allowedProjectIds);
+        // Flows ativos do workspace
         const { data: flws } = await supabase
           .from("flows")
           .select("id, name, project_id")
-          .in("project_id", allowedProjArr)
+          .in(
+            "project_id",
+            projects.map((p) => p.id),
+          )
           .eq("status", "active");
         const flows = (flws ?? []) as FlowRow[];
         const flowById = new Map(flows.map((f) => [f.id, f]));
@@ -158,8 +125,38 @@ export function LocalNotificationsSync({
           )
           .is("completed_at", null)
           .not("due_date", "is", null);
-        const phases = (phs ?? []) as PhaseRow[];
+        const allPhases = (phs ?? []) as PhaseRow[];
         if (cancelled) return;
+
+        // Filtro por role:
+        let phases: PhaseRow[];
+        if (role === "admin") {
+          phases = allPhases;
+        } else {
+          // Diretor + Membro: phase_responsibles direto OU responsavel do projeto
+          const phaseIds = allPhases.map((p) => p.id);
+          const { data: respRaw } = phaseIds.length
+            ? await supabase
+                .from("phase_responsibles")
+                .select("phase_id")
+                .in("phase_id", phaseIds)
+                .eq("user_id", userId)
+            : { data: [] };
+          const responsiblePhaseIds = new Set(
+            ((respRaw ?? []) as Array<{ phase_id: string }>).map(
+              (r) => r.phase_id,
+            ),
+          );
+
+          phases = allPhases.filter((p) => {
+            if (responsiblePhaseIds.has(p.id)) return true;
+            const flow = flowById.get(p.flow_id);
+            if (!flow) return false;
+            const project = projById.get(flow.project_id);
+            if (!project) return false;
+            return project.responsible_user_id === userId;
+          });
+        }
 
         // Agenda
         for (const p of phases) {
@@ -196,7 +193,7 @@ export function LocalNotificationsSync({
     return () => {
       cancelled = true;
     };
-  }, [userId, workspaceSlug, workspaceMemberId, role]);
+  }, [userId, workspaceSlug, role]);
 
   return null;
 }

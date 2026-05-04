@@ -37,7 +37,6 @@ export default async function WorkspaceLayout({
       <LocalNotificationsSync
         userId={ctx.member.user_id}
         workspaceSlug={ctx.workspace.slug}
-        workspaceMemberId={ctx.member.id}
         role={ctx.member.role}
       />
       <RealtimeWatcher

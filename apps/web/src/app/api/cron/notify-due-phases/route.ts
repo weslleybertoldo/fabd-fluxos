@@ -127,6 +127,28 @@ async function runJob(req: Request) {
     respByPhase.get(r.phase_id)!.push(r.user_id);
   }
 
+  // 2.5. Bulk load admins ativos por workspace (recebem tudo do workspace).
+  // Pre-load aqui ja com todos os ws envolvidos pra evitar N queries.
+  const wsIdsAll = Array.from(
+    new Set(phases.map((p) => p.flow.project.directory.workspace_id)),
+  );
+  const adminsByWs = new Map<string, string[]>();
+  if (wsIdsAll.length) {
+    const { data: adminsRaw } = await supa
+      .from("workspace_members")
+      .select("workspace_id, user_id")
+      .in("workspace_id", wsIdsAll)
+      .eq("status", "active")
+      .eq("role", "admin");
+    for (const a of (adminsRaw ?? []) as Array<{
+      workspace_id: string;
+      user_id: string;
+    }>) {
+      if (!adminsByWs.has(a.workspace_id)) adminsByWs.set(a.workspace_id, []);
+      adminsByWs.get(a.workspace_id)!.push(a.user_id);
+    }
+  }
+
   // 3. Pra cada phase, decidir tipo + targets
   const day = now.toISOString().slice(0, 10);
   let sent = 0;
@@ -153,11 +175,16 @@ async function runJob(req: Request) {
     const isOverdue = due < now;
     const type = isOverdue ? "phase_overdue" : "phase_due_soon";
 
-    // Targets: responsaveis da fase + responsavel do projeto
+    // Targets seguindo a regra:
+    // - Admin do workspace: SEMPRE recebe (tudo do workspace)
+    // - Diretor/Membro: SO se eh responsavel da fase (phase_responsibles)
+    //   OU responsavel do projeto (projects.responsible_user_id)
     const targets = new Set<string>();
     for (const uid of respByPhase.get(ph.id) ?? []) targets.add(uid);
     const projResp = ph.flow.project.responsible_user_id;
     if (projResp) targets.add(projResp);
+    const wsIdLoop = ph.flow.project.directory.workspace_id;
+    for (const adminId of adminsByWs.get(wsIdLoop) ?? []) targets.add(adminId);
 
     if (targets.size === 0) continue;
 
