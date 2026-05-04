@@ -1,6 +1,6 @@
 {
   "name": "@fabd-fluxos/desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "author": "Weslley Bertoldo <weslleybertoldo18@gmail.com>",
   "description": "FABD Fluxos — wrapper Electron (Windows)",
@@ -30,7 +30,14 @@
       "assets/**/*"
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "assets/icon.ico"
     },
     "nsis": {
