@@ -168,6 +168,12 @@ async function silentStartupCheck() {
 }
 
 app.whenReady().then(() => {
+  // Necessario pra Notification do Windows funcionar fora de Squirrel.
+  // Sem isso, Notification falha silenciosamente em prod (electron #41164).
+  // Valor deve casar com appId do electron-builder.
+  if (process.platform === "win32") {
+    app.setAppUserModelId("br.com.fabd.fluxos");
+  }
   buildMenu();
   createWindow();
   setTimeout(silentStartupCheck, 4000);
