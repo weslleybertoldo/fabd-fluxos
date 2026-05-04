@@ -20,7 +20,7 @@ export async function GET() {
   try {
     const releaseRes = await fetch(
       "https://api.github.com/repos/weslleybertoldo/fabd-fluxos/releases/latest",
-      { headers: apiHeaders, next: { revalidate: 300 } },
+      { headers: apiHeaders, next: { revalidate: 60 } },
     );
     if (!releaseRes.ok) {
       return NextResponse.json(

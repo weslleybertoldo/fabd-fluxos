@@ -25,7 +25,7 @@ export async function GET() {
       "https://api.github.com/repos/weslleybertoldo/fabd-fluxos/releases/latest",
       {
         headers,
-        next: { revalidate: 300 },
+        next: { revalidate: 60 },
       },
     );
     if (!res.ok) {
