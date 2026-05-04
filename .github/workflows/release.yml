@@ -52,19 +52,33 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x apps/mobile/android/gradlew
 
-      - name: Build APK debug
-        run: cd apps/mobile/android && ./gradlew assembleDebug
-
-      - name: Rename APK
+      - name: Build APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          APK=apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-          mv "$APK" "apps/mobile/android/app/build/outputs/apk/debug/FABD-Fluxos-${{ steps.version.outputs.current }}.apk"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Building SIGNED RELEASE APK"
+            echo "$KEYSTORE_BASE64" | base64 -d > apps/mobile/android/app/fabd-fluxos.keystore
+            export KEYSTORE_FILE=fabd-fluxos.keystore
+            cd apps/mobile/android && ./gradlew assembleRelease
+            SRC=app/build/outputs/apk/release/app-release.apk
+          else
+            echo "Building UNSIGNED DEBUG APK (no keystore secret found)"
+            cd apps/mobile/android && ./gradlew assembleDebug
+            SRC=app/build/outputs/apk/debug/app-debug.apk
+          fi
+          DST=app/build/outputs/apk/FABD-Fluxos-${{ steps.version.outputs.current }}.apk
+          mv "$SRC" "$DST"
+          echo "APK_PATH=apps/mobile/android/$DST" >> $GITHUB_ENV
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: apps/mobile/android/app/build/outputs/apk/debug/FABD-Fluxos-${{ steps.version.outputs.current }}.apk
+          path: ${{ env.APK_PATH }}
           retention-days: 7
 
   exe:
