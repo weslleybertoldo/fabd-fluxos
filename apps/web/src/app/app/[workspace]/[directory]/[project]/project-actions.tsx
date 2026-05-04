@@ -42,13 +42,13 @@ export function ProjectActions({
 
   useEffect(() => {
     if (!menuOpen) return;
-    function onClick(e: MouseEvent) {
+    function onPointer(e: PointerEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
     }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("pointerdown", onPointer);
+    return () => document.removeEventListener("pointerdown", onPointer);
   }, [menuOpen]);
 
   function runStatus(action: "archive" | "complete" | "reactivate" | "delete") {
@@ -182,7 +182,7 @@ export function ProjectActions({
         {menuOpen ? (
           <div
             role="menu"
-            className="absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+            className="absolute left-0 z-40 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-lg sm:left-auto sm:right-0"
           >
             <MenuItem
               label="Editar"

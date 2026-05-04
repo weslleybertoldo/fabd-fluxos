@@ -7,6 +7,7 @@ import {
   approveMember,
   blockMember,
   changeMemberRole,
+  deleteMember,
   setMemberDirectoryAccess,
 } from "@/lib/actions/members";
 import type { WorkspaceRole } from "@fabd-fluxos/db";
@@ -43,6 +44,12 @@ export function MemberRow({
       const res = await fn();
       if (!res.ok) setError(res.error);
     });
+  }
+
+  function confirmDelete() {
+    const label = `Excluir ${member.google_full_name ?? member.google_email ?? "este membro"} definitivamente do workspace? Acao irreversivel — pra readmitir, ele tera que solicitar acesso de novo.`;
+    if (!window.confirm(label)) return;
+    call(() => deleteMember(workspaceId, member.id));
   }
 
   function submitAccess(formData: FormData) {
@@ -165,18 +172,36 @@ export function MemberRow({
             >
               Bloquear
             </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={confirmDelete}
+              className="rounded-lg border border-red-300 bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              Excluir
+            </button>
           </>
         ) : null}
 
         {mode === "blocked" ? (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => call(() => approveMember(workspaceId, member.id, member.role))}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Reativar
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => call(() => approveMember(workspaceId, member.id, member.role))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Reativar
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={confirmDelete}
+              className="rounded-lg border border-red-300 bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              Excluir
+            </button>
+          </>
         ) : null}
       </div>
 

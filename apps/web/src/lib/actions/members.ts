@@ -349,6 +349,70 @@ export async function blockMember(
   return { ok: true };
 }
 
+/** Admin remove definitivamente um member do workspace.
+ * Cascade apaga member_directory_access. Tabelas com FK pra auth.users
+ * (responsible_user_id, created_by, etc) NAO sao afetadas.
+ * Bloqueios: nao pode deletar a si mesmo nem o ultimo admin do workspace. */
+export async function deleteMember(
+  workspaceId: string,
+  memberId: string,
+): Promise<ActionResult> {
+  const { supabase, sb, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+
+  const { data: target } = await supabase
+    .from("workspace_members")
+    .select("*")
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  const targetMember = target as unknown as WorkspaceMemberRow | null;
+  if (!targetMember) return { ok: false, error: "Member nao encontrado" };
+
+  if (targetMember.user_id === userId) {
+    return { ok: false, error: "Nao da pra excluir voce mesmo do workspace" };
+  }
+
+  // Garantia: nao deixar o workspace sem admin
+  if (targetMember.role === "admin" && targetMember.status === "active") {
+    const { count } = await supabase
+      .from("workspace_members")
+      .select("*", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId)
+      .eq("role", "admin")
+      .eq("status", "active");
+    if ((count ?? 0) <= 1) {
+      return { ok: false, error: "Este e o unico admin ativo — promova outro antes de excluir" };
+    }
+  }
+
+  const { error } = await sb
+    .from("workspace_members")
+    .delete()
+    .eq("id", memberId)
+    .eq("workspace_id", workspaceId);
+  if (error) return { ok: false, error: error.message };
+
+  await audit({
+    workspaceId,
+    entity: "member",
+    entityId: targetMember.user_id,
+    action: "delete",
+    changes: {
+      before: {
+        role: targetMember.role,
+        status: targetMember.status,
+        member_name: targetMember.google_full_name,
+        member_email: targetMember.google_email,
+      },
+    },
+    context: { member_name: targetMember.google_full_name },
+  });
+
+  revalidatePath(`/app`);
+  return { ok: true };
+}
+
 /**
  * Admin define quais diretorias um member pode acessar.
  * Sem nenhuma linha = membro ve TODAS as diretorias do workspace (default).
