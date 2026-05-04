@@ -20,7 +20,10 @@ import {
 export function NativeNotificationsBootstrap() {
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    // Delay 1.5s pra dar tempo da MainActivity Capacitor estar 100% pronta —
+    // chamar requestPermissions cedo demais pode falhar em alguns devices.
+    timeoutId = setTimeout(async () => {
       try {
         await ensureChannel();
         if (cancelled) return;
@@ -28,9 +31,10 @@ export function NativeNotificationsBootstrap() {
       } catch (e) {
         console.warn("[notifs-bootstrap] init falhou:", e);
       }
-    })();
+    }, 1500);
     return () => {
       cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 

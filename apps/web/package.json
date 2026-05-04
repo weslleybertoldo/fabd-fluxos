@@ -40,7 +40,7 @@
   "devDependencies": {
     "@capacitor/app": "^7.0.0",
     "@capacitor/browser": "^7.0.0",
-    "@capacitor/local-notifications": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.6",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
@@ -55,6 +55,6 @@
   "peerDependencies": {
     "@capacitor/app": "^7.0.0",
     "@capacitor/browser": "^7.0.0",
-    "@capacitor/local-notifications": "^7.0.0"
+    "@capacitor/local-notifications": "^7.0.6"
   }
 }

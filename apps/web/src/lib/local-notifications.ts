@@ -34,16 +34,21 @@ async function importPlugin() {
   return (mod as typeof import("@capacitor/local-notifications")).LocalNotifications;
 }
 
-/** Pede permissao se ainda nao concedida. Retorna true se concedida. */
+/** Pede permissao se ainda nao concedida. Retorna true se concedida.
+ *
+ * Workaround pro bug conhecido do plugin (capacitor #6161): em Android 13+
+ * com o plugin retornando 'denied' direto sem mostrar popup, sempre
+ * chamamos requestPermissions explicitamente quando status != granted.
+ */
 export async function requestNotificationPermission(): Promise<boolean> {
   const LN = await importPlugin();
   if (!LN) return false;
   try {
-    let perm = await LN.checkPermissions();
-    if (perm.display === "prompt" || perm.display === "prompt-with-rationale") {
-      perm = await LN.requestPermissions();
-    }
-    return perm.display === "granted";
+    const initial = await LN.checkPermissions();
+    if (initial.display === "granted") return true;
+    // Forca o popup nativo do Android 13+
+    const after = await LN.requestPermissions();
+    return after.display === "granted";
   } catch (e) {
     console.warn("[local-notifications] permission error:", e);
     return false;
