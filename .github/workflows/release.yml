@@ -230,10 +230,24 @@ jobs:
             "
           done
 
-      - name: Commit bump
+      - name: Commit bump (com retry pra race condition)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json apps/web/package.json apps/desktop/package.json apps/mobile/package.json
-          git diff --staged --quiet || git commit -m "chore: bump version pra proxima [skip ci]"
-          git push
+          if git diff --staged --quiet; then
+            echo "Sem mudancas pra commitar"
+            exit 0
+          fi
+          git commit -m "chore: bump version pra proxima [skip ci]"
+          # Retry push: se outro workflow ja pushou em paralelo, rebase + retry
+          for attempt in 1 2 3; do
+            if git push; then
+              echo "Push OK na tentativa $attempt"
+              exit 0
+            fi
+            echo "Push rejeitado na tentativa $attempt, fazendo pull --rebase"
+            git pull --rebase origin main || true
+          done
+          echo "Falhou apos 3 tentativas — outro workflow concorrente venceu (provavelmente bumpou pra mesma versao). Nao eh blocker."
+          exit 0
