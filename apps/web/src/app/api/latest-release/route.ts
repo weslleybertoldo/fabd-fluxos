@@ -39,11 +39,17 @@ export async function GET() {
       tag_name: string;
       html_url: string;
       published_at: string;
+      assets?: Array<{ name: string; browser_download_url: string; size: number }>;
     };
     return NextResponse.json({
       tag_name: data.tag_name,
       html_url: data.html_url,
       published_at: data.published_at,
+      assets: (data.assets ?? []).map((a) => ({
+        name: a.name,
+        url: a.browser_download_url,
+        size: a.size,
+      })),
     });
   } catch (e) {
     return NextResponse.json(

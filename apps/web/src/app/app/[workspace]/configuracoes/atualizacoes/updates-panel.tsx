@@ -9,10 +9,28 @@ interface Props {
 
 type Platform = "web" | "desktop" | "android" | "ios";
 
+interface ReleaseAsset {
+  name: string;
+  url: string;
+  size: number;
+}
+
 interface ReleaseInfo {
   tag_name: string;
   html_url: string;
   published_at: string;
+  assets?: ReleaseAsset[];
+}
+
+/**
+ * Encontra um asset da release pelo sufixo do nome (ex: ".apk", ".exe").
+ * GitHub normaliza espacos em pontos quando o asset eh enviado com nome com
+ * espaco — usar a URL real do asset eh mais robusto que construir o nome.
+ */
+function findAsset(release: ReleaseInfo | null, suffix: string): string | null {
+  if (!release?.assets) return null;
+  const a = release.assets.find((x) => x.name.toLowerCase().endsWith(suffix));
+  return a?.url ?? null;
 }
 
 // Proxy server-side em /api/latest-release usa GITHUB_TOKEN pra
@@ -173,15 +191,10 @@ function DownloadLinksCard() {
     };
   }, []);
   const latest = release?.tag_name?.replace(/^v/, "") ?? "";
-  const apkUrl = release && latest
-    ? `${release.html_url.replace("/tag/", "/download/")}/FABD-Fluxos-${latest}.apk`
-    : "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
-  const exeUrl = release && latest
-    ? `${release.html_url.replace("/tag/", "/download/")}/FABD-Fluxos-Setup-${latest}.exe`
-    : "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
-  const releasePageUrl =
-    release?.html_url ??
-    "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
+  const fallbackUrl = "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
+  const apkUrl = findAsset(release, ".apk") ?? fallbackUrl;
+  const exeUrl = findAsset(release, ".exe") ?? fallbackUrl;
+  const releasePageUrl = release?.html_url ?? fallbackUrl;
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <p className="text-sm font-semibold text-slate-900">Baixar app</p>
@@ -192,7 +205,7 @@ function DownloadLinksCard() {
       <div className="mt-3 flex flex-wrap gap-2">
         <a
           href={apkUrl}
-          download={`FABD-Fluxos-${latest || "latest"}.apk`}
+          download
           className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -200,7 +213,7 @@ function DownloadLinksCard() {
         </a>
         <a
           href={exeUrl}
-          download={`FABD-Fluxos-Setup-${latest || "latest"}.exe`}
+          download
           className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -399,14 +412,8 @@ function ReleaseCard({
 }) {
   const latest = release.tag_name.replace(/^v/, "");
   const isOutdated = latest !== currentVersion;
-  const apkAsset = `${release.html_url.replace(
-    "/tag/",
-    "/download/",
-  )}/FABD-Fluxos-${latest}.apk`;
-  const exeAsset = `${release.html_url.replace(
-    "/tag/",
-    "/download/",
-  )}/FABD-Fluxos-Setup-${latest}.exe`;
+  const apkAsset = findAsset(release, ".apk") ?? release.html_url;
+  const exeAsset = findAsset(release, ".exe") ?? release.html_url;
 
   return (
     <div
