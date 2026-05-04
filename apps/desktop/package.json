@@ -19,6 +19,8 @@
   "build": {
     "appId": "br.com.fabd.fluxos",
     "productName": "FABD Fluxos",
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
     "directories": {
       "output": "dist"
     },
