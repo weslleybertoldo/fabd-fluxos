@@ -79,6 +79,18 @@ export function UpdatesPanel({ webVersion }: Props) {
       const p = cap.getPlatform?.();
       if (p === "android") setPlatform("android");
       else if (p === "ios") setPlatform("ios");
+      // Pega a versao FISICA do APK/IPA via Capacitor App.getInfo()
+      // — sem isso o card mostra a versao do site (que reflete o
+      // package.json do build, nao a do binario instalado).
+      import("@capacitor/app")
+        .then((mod) =>
+          mod.App.getInfo()
+            .then((info) => {
+              if (info?.version) setInstalledVersion(info.version);
+            })
+            .catch(() => {}),
+        )
+        .catch(() => {});
     } else if (
       navigator.userAgent.toLowerCase().includes("electron") ||
       (window as unknown as { electronAPI?: unknown }).electronAPI
