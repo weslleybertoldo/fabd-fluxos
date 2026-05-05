@@ -27,9 +27,13 @@ function isNative(): boolean {
 
 async function importPlugin() {
   if (!isNative()) return null;
-  const mod = await import(
-    /* webpackIgnore: true */ "@capacitor/local-notifications"
-  ).catch(() => null);
+  // Plugin Capacitor: bundle dinamico (chunk separado, carregado runtime).
+  // NAO usar webpackIgnore — em server.url externo, navegador tenta resolver
+  // "@capacitor/local-notifications" como URL relativa e falha silencioso.
+  const mod = await import("@capacitor/local-notifications").catch((e) => {
+    console.error("[local-notifications] failed to load plugin:", e);
+    return null;
+  });
   if (!mod) return null;
   return (mod as typeof import("@capacitor/local-notifications")).LocalNotifications;
 }

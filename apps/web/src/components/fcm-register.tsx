@@ -26,10 +26,13 @@ export function FcmRegister() {
         const platform = cap.getPlatform?.();
         if (platform !== "android" && platform !== "ios") return;
 
-        // Carrega plugin so quando estamos em Capacitor (evita bundle web)
-        const mod = await import(
-          /* webpackIgnore: true */ "@capacitor/push-notifications"
-        ).catch(() => null);
+        // Plugin Capacitor: bundle dinamico (chunk separado, carregado runtime).
+        // NAO usar webpackIgnore — em server.url externo, o navegador tenta
+        // resolver "@capacitor/push-notifications" como URL relativa e falha.
+        const mod = await import("@capacitor/push-notifications").catch((e) => {
+          console.error("[fcm] failed to load plugin:", e);
+          return null;
+        });
         if (!mod) return;
         const { PushNotifications } = mod as typeof import("@capacitor/push-notifications");
 
