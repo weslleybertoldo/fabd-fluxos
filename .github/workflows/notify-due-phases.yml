@@ -1,0 +1,26 @@
+name: Notify due phases
+
+# Vercel Hobby limita cron a 1x/dia. Pra disparar notif no horario do
+# vencimento (ou nas 9h dos milestones T-1d/T+1d), usamos GH Actions a
+# cada 10min. O endpoint dedupa via phase_notification_log, entao roda
+# de boa em paralelo com o cron Vercel diario.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/notify-due-phases
+        run: |
+          set -e
+          RES=$(curl -fsS -w "\n%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://fluxos.fabd.com.br/api/cron/notify-due-phases")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE | $BODY"
+          [ "$CODE" = "200" ] || (echo "ERRO" && exit 1)

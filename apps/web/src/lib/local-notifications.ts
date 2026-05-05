@@ -6,10 +6,10 @@
  * (ou iOS). Sem servidor, sem Firebase, sem internet — funciona offline.
  *
  * Casos de uso no fabd-fluxos:
- * - Lembrete de fase com `due_date` (ex: 1 dia antes as 9h, e no dia
- *   do vencimento as 9h se ainda nao concluida).
+ * - Lembrete de fase com `due_date`: 1 dia antes as 9h, no dia (no horario
+ *   do due_date — ou 9h se sem hora), e 1 dia depois as 9h.
  *
- * Web/Desktop: nao faz nada (browser/Electron usam Web Push).
+ * Web/Desktop: nao faz nada (browser/Electron usam Web Push via cron).
  */
 
 const CHANNEL_ID = "phase_reminders";
@@ -103,10 +103,11 @@ interface ContextLike {
 }
 
 /**
- * Agenda 3 notificacoes locais pra fase as 9h:
- * - 1 dia antes do vencimento ("vence amanha")
- * - No dia do vencimento ("vence hoje")
- * - 1 dia depois do vencimento ("atrasou")
+ * Agenda 3 notificacoes locais pra fase:
+ * - 1 dia antes do vencimento as 9h           ("vence amanha")
+ * - No dia do vencimento (hora do due_date,
+ *   ou 9h se hora == 00:00)                   ("vence hoje")
+ * - 1 dia depois do vencimento as 9h          ("atrasou")
  *
  * Se a data ja passou, soh nao agenda os horarios passados (os futuros
  * continuam validos). Cancela qualquer notificacao anterior do mesmo phase_id.
@@ -126,17 +127,25 @@ export async function schedulePhaseReminder(
   if (!granted) return;
   await ensureChannel();
 
-  // due_date pode vir como "YYYY-MM-DD" ou ISO timestamp completo
-  // ("YYYY-MM-DDTHH:mm:ss+TZ"). Extrai so a data e constroi Date pelo
-  // construtor numerico (timezone local sem ambiguidade) pras 9h.
-  const ymd = phase.due_date.slice(0, 10);
-  const [yy, mm, dd] = ymd.split("-").map(Number);
-  if (!yy || !mm || !dd) return;
-  const due = new Date(yy, mm - 1, dd, 9, 0, 0, 0);
-  const dayBefore = new Date(due);
-  dayBefore.setDate(dayBefore.getDate() - 1);
-  const dayAfter = new Date(due);
-  dayAfter.setDate(dayAfter.getDate() + 1);
+  // due_date sempre vem como ISO timestamp em UTC (timestamptz no banco).
+  // Extrai a data E hora em timezone local do celular (que pra um user FABD
+  // sera America/Maceio). Constroi 3 milestones:
+  //   today    = hora do due (ou 9h se hora local == 00:00)
+  //   dayBefore = 9h fixo do dia anterior
+  //   dayAfter  = 9h fixo do dia seguinte
+  const dueRaw = new Date(phase.due_date);
+  if (isNaN(dueRaw.getTime())) return;
+  const yy = dueRaw.getFullYear();
+  const mm = dueRaw.getMonth();
+  const dd = dueRaw.getDate();
+  const dueHour = dueRaw.getHours();
+  const dueMinute = dueRaw.getMinutes();
+  // Fallback: se due_date sem hora (00:00 local), usa 9h padrao no milestone
+  const todayHour = dueHour === 0 && dueMinute === 0 ? 9 : dueHour;
+  const todayMinute = dueHour === 0 && dueMinute === 0 ? 0 : dueMinute;
+  const due = new Date(yy, mm, dd, todayHour, todayMinute, 0, 0);
+  const dayBefore = new Date(yy, mm, dd - 1, 9, 0, 0, 0);
+  const dayAfter = new Date(yy, mm, dd + 1, 9, 0, 0, 0);
 
   const baseId = notificationIdFromUuid(phase.id);
   const idDayBefore = baseId;
