@@ -1,6 +1,6 @@
 {
   "name": "@fabd-fluxos/desktop",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "private": true,
   "author": "Weslley Bertoldo <weslleybertoldo18@gmail.com>",
   "description": "FABD Fluxos — wrapper Electron (Windows)",
