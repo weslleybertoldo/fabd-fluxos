@@ -2,7 +2,7 @@
   "name": "@fabd-fluxos/mobile",
   "version": "1.19.0",
   "private": true,
-  "description": "FABD Fluxos — wrapper Capacitor (Android)",
+  "description": "FABD Fluxos \u2014 wrapper Capacitor (Android)",
   "scripts": {
     "sync": "cap sync",
     "open:android": "cap open android",

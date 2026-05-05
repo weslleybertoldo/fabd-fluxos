@@ -3,7 +3,7 @@
   "version": "1.19.0",
   "private": true,
   "author": "Weslley Bertoldo <weslleybertoldo18@gmail.com>",
-  "description": "FABD Fluxos — wrapper Electron (Windows)",
+  "description": "FABD Fluxos \u2014 wrapper Electron (Windows)",
   "main": "main.js",
   "scripts": {
     "dev": "cross-env FABD_DEV=1 electron .",

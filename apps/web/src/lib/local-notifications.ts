@@ -122,7 +122,13 @@ export async function schedulePhaseReminder(
   if (!granted) return;
   await ensureChannel();
 
-  const due = new Date(`${phase.due_date}T09:00:00`);
+  // due_date pode vir como "YYYY-MM-DD" ou ISO timestamp completo
+  // ("YYYY-MM-DDTHH:mm:ss+TZ"). Extrai so a data e constroi Date pelo
+  // construtor numerico (timezone local sem ambiguidade) pras 9h.
+  const ymd = phase.due_date.slice(0, 10);
+  const [yy, mm, dd] = ymd.split("-").map(Number);
+  if (!yy || !mm || !dd) return;
+  const due = new Date(yy, mm - 1, dd, 9, 0, 0, 0);
   const dayBefore = new Date(due);
   dayBefore.setDate(dayBefore.getDate() - 1);
   const dayAfter = new Date(due);

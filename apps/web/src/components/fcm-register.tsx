@@ -41,8 +41,9 @@ export function FcmRegister() {
         }
         if (!granted) return;
 
-        await PushNotifications.register();
-
+        // CRITICO: listeners ANTES de register(). Em Capacitor 8 o callback
+        // nativo pode disparar imediato (token cacheado), antes do listener JS
+        // existir, perdendo o token. Detalhe: capacitor#3042
         PushNotifications.addListener("registration", async (token) => {
           await saveFcmToken({
             token: token.value,
@@ -65,6 +66,7 @@ export function FcmRegister() {
           },
         );
 
+        await PushNotifications.register();
         registered.current = true;
       } catch (e) {
         console.error("[fcm] init error:", e);
