@@ -243,12 +243,19 @@ async function runJob(req: Request) {
           continue;
         }
 
-        await supa.from("phase_notification_log").insert({
-          phase_id: ph.id,
-          user_id: uid,
-          notification_type: type,
-          notification_day: day,
-        });
+        const { error: lErr } = await supa
+          .from("phase_notification_log")
+          .insert({
+            phase_id: ph.id,
+            user_id: uid,
+            notification_type: type,
+            notification_day: day,
+          });
+        if (lErr) {
+          // Log nao gravado = dedup quebra = SPAM no proximo run.
+          // Loga em errors[] pra ficar visivel no body do response.
+          errors.push(`log ${ph.id}/${uid}/${type}: ${lErr.message}`);
+        }
 
         const absoluteLink = link ? `${APP_URL}${link}` : "/app";
         const pushPayload = {
