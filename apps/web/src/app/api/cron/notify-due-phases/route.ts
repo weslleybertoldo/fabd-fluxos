@@ -32,7 +32,7 @@ type PhaseExpanded = {
       id: string;
       name: string;
       responsible_user_id: string | null;
-      directory: { workspace_id: string; slug: string };
+      directory: { workspace_id: string; slug: string; name: string };
     };
   };
 };
@@ -105,7 +105,8 @@ async function runJob(req: Request) {
             responsible_user_id,
             directory:directories!inner(
               workspace_id,
-              slug
+              slug,
+              name
             )
           )
         )
@@ -419,32 +420,37 @@ function renderTitleBody(
 ): { title: string; body: string } {
   const flow = ph.flow.name;
   const proj = ph.flow.project.name;
-  const ctx = `${flow} / ${proj}`;
+  const dir = ph.flow.project.directory.name;
+  const path = `${dir}/${proj}/${flow}`;
   const dueFmt = formatDateBR(due);
   if (milestone === "tomorrow") {
     return {
       title: `Fase vence amanhã: "${ph.name}"`,
-      body: `Vence amanhã ${dueFmt} em ${ctx}.`,
+      body: `Fluxo: ${path} em ${dueFmt}.`,
     };
   }
   if (milestone === "today") {
     return {
       title: `Fase vence hoje: "${ph.name}"`,
-      body: `Vence hoje ${dueFmt} em ${ctx}.`,
+      body: `Fluxo: ${path} em ${dueFmt}.`,
     };
   }
   return {
-    title: `Fase atrasada: "${ph.name}"`,
-    body: `Venceu ontem ${dueFmt} em ${ctx} e ainda nao foi concluida.`,
+    title: `Fase vencida: "${ph.name}"`,
+    body: `Fluxo: ${path} em ${dueFmt}.`,
   };
 }
 
 function formatDateBR(d: Date): string {
-  return d.toLocaleString("pt-BR", {
+  const date = d.toLocaleDateString("pt-BR", {
     timeZone: BR_TZ,
     day: "2-digit",
-    month: "short",
+    month: "2-digit",
+  });
+  const time = d.toLocaleTimeString("pt-BR", {
+    timeZone: BR_TZ,
     hour: "2-digit",
     minute: "2-digit",
   });
+  return `${date} às ${time}`;
 }

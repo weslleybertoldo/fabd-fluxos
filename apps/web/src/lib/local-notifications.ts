@@ -202,7 +202,7 @@ export async function schedulePhaseReminder(
   if (dayAfter > now) {
     notifications.push({
       id: idDayAfter,
-      title: "Fase atrasada",
+      title: "Fase vencida",
       body: `${phase.name} (${subtitle}) venceu ontem e ainda nao foi concluida.`,
       schedule: { at: dayAfter },
       channelId: CHANNEL_ID,
