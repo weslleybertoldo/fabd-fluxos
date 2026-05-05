@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PhaseFields } from "./phase-fields";
 import { PhaseAttachments } from "./phase-attachments";
+import { PhaseModal, PhaseResponsiblesModal } from "./phase-edit-modals";
 import { createComment, deleteComment } from "@/lib/actions/comments";
+import {
+  deletePhase,
+  setPhaseResponsibles,
+  updatePhase,
+} from "@/lib/actions/phases";
 import type {
   FlowCommentRow,
   PhaseAttachmentRow,
@@ -37,6 +43,8 @@ interface Props {
   attachments: PhaseAttachmentRow[];
   comments: FlowCommentRow[];
   responsibleUsers: MemberLite[];
+  responsibleIds: string[];
+  members: MemberLite[];
   authors: Record<string, MemberLite>;
   onClose: () => void;
 }
@@ -56,6 +64,8 @@ export function PhaseDetailModal({
   attachments,
   comments,
   responsibleUsers,
+  responsibleIds,
+  members,
   authors,
   onClose,
 }: Props) {
@@ -64,12 +74,29 @@ export function PhaseDetailModal({
   const [commentText, setCommentText] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState<{
+    focus?: "name" | "due_date";
+  } | null>(null);
+  const [editingResp, setEditingResp] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const isAdmin = currentUserRole === "admin";
   const canWrite = currentUserRole === "admin" || currentUserRole === "diretor";
   const completed = !!phase.completed_at;
   const isOverdue =
     !completed && phase.due_date && new Date(phase.due_date) < new Date();
+
+  // Fecha menu ao clicar fora
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
 
   function submitComment() {
     const content = commentText.trim();
@@ -112,6 +139,77 @@ export function PhaseDetailModal({
     });
   }
 
+  function submitEdit(formData: FormData) {
+    setError(null);
+    const name = (formData.get("name") as string) ?? "";
+    const description = (formData.get("description") as string) ?? "";
+    const dueDate = (formData.get("due_date") as string) ?? "";
+    const color = (formData.get("color") as string) ?? "";
+    start(async () => {
+      const r = await updatePhase({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId,
+        phaseId: phase.id,
+        name,
+        description: description || null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        color: color || null,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setEditing(null);
+      router.refresh();
+    });
+  }
+
+  function submitResponsibles(formData: FormData) {
+    setError(null);
+    const userIds = formData.getAll("responsibleIds").map(String).filter(Boolean);
+    start(async () => {
+      const r = await setPhaseResponsibles({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId,
+        phaseId: phase.id,
+        userIds,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setEditingResp(false);
+      router.refresh();
+    });
+  }
+
+  function handleDelete() {
+    if (
+      !confirm(`Excluir a fase "${phase.name}" e tudo dentro dela? Acao irreversivel.`)
+    )
+      return;
+    setError(null);
+    start(async () => {
+      const r = await deletePhase({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId,
+        phaseId: phase.id,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      onClose();
+      router.refresh();
+    });
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 px-4 py-6 backdrop-blur-sm"
@@ -127,9 +225,79 @@ export function PhaseDetailModal({
             <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
               Fase
             </p>
-            <h2 className="mt-0.5 truncate text-xl font-semibold text-slate-900">
-              {phase.name}
-            </h2>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <h2 className="truncate text-xl font-semibold text-slate-900">
+                {phase.name}
+              </h2>
+              {phase.color ? (
+                <span
+                  className="h-3 w-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: phase.color }}
+                  title={phase.color}
+                />
+              ) : null}
+              {canEdit ? (
+                <div className="relative shrink-0" ref={menuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen((v) => !v)}
+                    disabled={pending}
+                    aria-label="Opcoes da fase"
+                    aria-expanded={menuOpen}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                  {menuOpen ? (
+                    <div className="absolute left-0 top-full z-10 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setEditing({ focus: "name" });
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <PencilIcon /> Editar nome / descricao / cor
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setEditing({ focus: "due_date" });
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <CalendarIcon /> Mudar data de vencimento
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setEditingResp(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <UsersIcon /> Responsaveis
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          handleDelete();
+                        }}
+                        className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+                      >
+                        <TrashIcon /> Excluir fase
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <span
                 className={`rounded-full px-2 py-0.5 font-medium ${
@@ -143,9 +311,30 @@ export function PhaseDetailModal({
                 {completed ? "Concluida" : isOverdue ? "Vencida" : "Em andamento"}
               </span>
               {phase.due_date ? (
-                <span className="text-slate-500">
-                  Vencimento: {formatDate(phase.due_date)}
-                </span>
+                canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditing({ focus: "due_date" })}
+                    disabled={pending}
+                    className="text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
+                    title="Clique pra mudar"
+                  >
+                    Vencimento: {formatDate(phase.due_date)}
+                  </button>
+                ) : (
+                  <span className="text-slate-500">
+                    Vencimento: {formatDate(phase.due_date)}
+                  </span>
+                )
+              ) : canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => setEditing({ focus: "due_date" })}
+                  disabled={pending}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600 hover:bg-slate-200"
+                >
+                  + Definir vencimento
+                </button>
               ) : null}
             </div>
           </div>
@@ -195,19 +384,43 @@ export function PhaseDetailModal({
 
           {tab === "overview" ? (
             <div className="space-y-5">
-              {phase.description ? (
-                <section>
+              <section>
+                <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-700">Descricao</h3>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ focus: "name" })}
+                      disabled={pending}
+                      className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                    >
+                      {phase.description ? "Editar" : "+ Adicionar"}
+                    </button>
+                  ) : null}
+                </div>
+                {phase.description ? (
                   <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-700">
                     {phase.description}
                   </p>
-                </section>
-              ) : (
-                <p className="text-sm italic text-slate-400">Sem descricao.</p>
-              )}
+                ) : (
+                  <p className="mt-1.5 text-sm italic text-slate-400">Sem descricao.</p>
+                )}
+              </section>
 
               <section>
-                <h3 className="text-sm font-semibold text-slate-700">Responsaveis</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-700">Responsaveis</h3>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditingResp(true)}
+                      disabled={pending}
+                      className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                    >
+                      {responsibleUsers.length > 0 ? "Editar" : "+ Adicionar"}
+                    </button>
+                  ) : null}
+                </div>
                 {responsibleUsers.length === 0 ? (
                   <p className="mt-1.5 text-sm italic text-slate-400">
                     Nenhum responsavel atribuido.
@@ -348,6 +561,31 @@ export function PhaseDetailModal({
           ) : null}
         </div>
       </div>
+
+      {editing ? (
+        <PhaseModal
+          title="Editar fase"
+          submitLabel="Salvar"
+          phase={phase}
+          initialFocus={editing.focus}
+          onSubmit={submitEdit}
+          onClose={() => !pending && setEditing(null)}
+          pending={pending}
+          error={error}
+        />
+      ) : null}
+
+      {editingResp ? (
+        <PhaseResponsiblesModal
+          phase={phase}
+          members={members}
+          currentIds={responsibleIds}
+          onSubmit={submitResponsibles}
+          onClose={() => !pending && setEditingResp(false)}
+          pending={pending}
+          error={error}
+        />
+      ) : null}
     </div>
   );
 }
@@ -382,6 +620,49 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-wider text-slate-400">{label}</p>
       <p className="mt-0.5 text-lg font-semibold text-slate-800">{value}</p>
     </div>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+    </svg>
   );
 }
 

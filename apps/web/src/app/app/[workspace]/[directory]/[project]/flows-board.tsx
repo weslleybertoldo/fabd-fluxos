@@ -19,8 +19,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { reorderFlows } from "@/lib/actions/flows";
-import { setPhaseCompleted } from "@/lib/actions/phases";
+import { createPhase, setPhaseCompleted } from "@/lib/actions/phases";
 import { PhaseDetailModal } from "./[flow]/phase-detail-modal";
+import { PhaseModal } from "./[flow]/phase-edit-modals";
 import type {
   FlowCommentRow,
   FlowRow,
@@ -74,6 +75,7 @@ export function FlowsBoard({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [openDetail, setOpenDetail] = useState<{ phase: PhaseRow; flow: FlowRow } | null>(null);
+  const [creatingFor, setCreatingFor] = useState<FlowRow | null>(null);
 
   const memberByUserId = new Map(members.map((m) => [m.user_id, m]));
   const authorsMap = Object.fromEntries(members.map((m) => [m.user_id, m]));
@@ -118,6 +120,32 @@ export function FlowsBoard({
         setFlows(initialFlows);
         return;
       }
+      router.refresh();
+    });
+  }
+
+  function submitCreatePhase(flow: FlowRow, formData: FormData) {
+    setError(null);
+    const name = (formData.get("name") as string) ?? "";
+    const description = (formData.get("description") as string) ?? "";
+    const dueDate = (formData.get("due_date") as string) ?? "";
+    const color = (formData.get("color") as string) ?? "";
+    start(async () => {
+      const r = await createPhase({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId: flow.id,
+        name,
+        description: description || null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        color: color || null,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setCreatingFor(null);
       router.refresh();
     });
   }
@@ -177,6 +205,7 @@ export function FlowsBoard({
                 pending={pending}
                 onTogglePhase={(p) => togglePhase(flow, p)}
                 onOpenPhase={(p) => setOpenDetail({ phase: p, flow })}
+                onAddPhase={() => setCreatingFor(flow)}
               />
             ))}
           </div>
@@ -202,8 +231,22 @@ export function FlowsBoard({
           responsibleUsers={(responsiblesByPhase[openDetail.phase.id] ?? [])
             .map((uid) => memberByUserId.get(uid))
             .filter((m): m is MemberLite => !!m)}
+          responsibleIds={responsiblesByPhase[openDetail.phase.id] ?? []}
+          members={members}
           authors={authorsMap}
           onClose={() => setOpenDetail(null)}
+        />
+      ) : null}
+
+      {creatingFor ? (
+        <PhaseModal
+          key={`create-${creatingFor.id}`}
+          title={`Nova fase em "${creatingFor.name}"`}
+          submitLabel="Criar fase"
+          onSubmit={(fd) => submitCreatePhase(creatingFor, fd)}
+          onClose={() => !pending && setCreatingFor(null)}
+          pending={pending}
+          error={error}
         />
       ) : null}
     </div>
@@ -221,6 +264,7 @@ function SortableFlowColumn(props: {
   pending: boolean;
   onTogglePhase: (phase: PhaseRow) => void;
   onOpenPhase: (phase: PhaseRow) => void;
+  onAddPhase: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.flow.id, disabled: !props.canReorder });
@@ -241,7 +285,10 @@ function SortableFlowColumn(props: {
         directorySlug={props.directorySlug}
         projectId={props.projectId}
         canReorder={props.canReorder}
+        canEdit={props.canEdit}
+        pending={props.pending}
         drag={{ attributes, listeners }}
+        onAddPhase={props.onAddPhase}
       />
       <FlowColumnBody
         phases={props.phases}
@@ -266,14 +313,20 @@ function FlowColumnHeader({
   directorySlug,
   projectId,
   canReorder,
+  canEdit,
+  pending,
   drag,
+  onAddPhase,
 }: {
   flow: FlowRow;
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
   canReorder: boolean;
+  canEdit: boolean;
+  pending: boolean;
   drag: DragHandleProps;
+  onAddPhase: () => void;
 }) {
   const href = `/app/${workspaceSlug}/${directorySlug}/${projectId}/${flow.id}`;
   return (
@@ -303,6 +356,22 @@ function FlowColumnHeader({
           ) : null}
         </div>
       </div>
+      {canEdit ? (
+        <button
+          type="button"
+          onClick={onAddPhase}
+          onPointerDown={(e) => e.stopPropagation()}
+          disabled={pending}
+          aria-label="Adicionar fase"
+          title="Adicionar fase"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+      ) : null}
       {canReorder ? (
         <span className="shrink-0 text-slate-300" aria-hidden>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
