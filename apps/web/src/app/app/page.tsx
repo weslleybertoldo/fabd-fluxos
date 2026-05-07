@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { WorkspaceSearch } from "./workspace-search";
 import { RequestAccessButton } from "./request-access-button";
+import { CreateWorkspaceCard } from "./create-workspace-card";
+
+const SENIOR_ADMIN_EMAIL = "weslleybertoldo18@gmail.com";
 import type { WorkspaceMemberRow, WorkspaceRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +73,8 @@ export default async function AppHomePage({
     redirect(`/app/${onlyActive.slug}`);
   }
 
+  const isSeniorAdmin = (user.email ?? "").toLowerCase() === SENIOR_ADMIN_EMAIL;
+
   return (
     <div className="space-y-10">
       <header>
@@ -88,6 +93,8 @@ export default async function AppHomePage({
           </p>
         ) : null}
       </header>
+
+      {isSeniorAdmin ? <CreateWorkspaceCard /> : null}
 
       <WorkspaceSearch />
 

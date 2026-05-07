@@ -203,6 +203,48 @@ async function persistMembershipRequest(
   return { ok: true };
 }
 
+const SENIOR_ADMIN_EMAIL = "weslleybertoldo18@gmail.com";
+
+/** Cria um novo workspace + ja vira admin/active member.
+ *  Restrito ao senior admin (RLS + RPC fazem dupla checagem). */
+export async function createWorkspace(input: {
+  name: string;
+  slug: string;
+}): Promise<{ ok: true; data: { id: string; slug: string } } | { ok: false; error: string }> {
+  const { supabase, userId, userMeta } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+  if ((userMeta.email ?? "").toLowerCase() !== SENIOR_ADMIN_EMAIL) {
+    return { ok: false, error: "Apenas o senior admin pode criar workspaces" };
+  }
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Nome obrigatorio" };
+  if (name.length > 80) return { ok: false, error: "Nome muito longo (max 80)" };
+
+  const slug = input.slug.trim().toLowerCase();
+  if (!/^[a-z0-9]([a-z0-9-]{0,58}[a-z0-9])?$/.test(slug)) {
+    return { ok: false, error: "Slug invalido (use a-z, 0-9, hifen; 2-60 chars)" };
+  }
+
+  const sb = supabase as unknown as {
+    rpc(
+      fn: string,
+      args: Record<string, unknown>,
+    ): Promise<{ data: unknown; error: { message: string } | null }>;
+  };
+  const { data, error } = await sb.rpc("create_workspace_as_senior_admin", {
+    p_name: name,
+    p_slug: slug,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  const ws = data as { id: string; slug: string } | null;
+  if (!ws?.id) return { ok: false, error: "Falha ao criar workspace" };
+
+  revalidatePath("/app");
+  return { ok: true, data: { id: ws.id, slug: ws.slug } };
+}
+
 /** Admin aprova um membro pending — define role e status=active. */
 export async function approveMember(
   workspaceId: string,
