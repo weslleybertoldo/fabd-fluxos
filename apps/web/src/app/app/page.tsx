@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { WorkspaceSearch } from "./workspace-search";
 import { RequestAccessButton } from "./request-access-button";
@@ -66,13 +67,21 @@ export default async function AppHomePage({
   // Atalho: se o usuario eh membro ativo de exatamente 1 workspace e nao pediu o picker
   // explicitamente (?picker=1) nem caiu aqui por erro, manda direto pras diretorias.
   const onlyActive = active.length === 1 ? active[0] : null;
-  const skipPicker =
-    onlyActive !== null &&
-    !params.picker &&
-    !params.error &&
-    !params.pending;
-  if (skipPicker && onlyActive) {
+  const allowSkip = !params.picker && !params.error && !params.pending;
+  if (allowSkip && onlyActive) {
     redirect(`/app/${onlyActive.slug}`);
+  }
+
+  // Atalho 2: se tem 2+ workspaces ativos, tenta abrir o ultimo aberto via cookie.
+  // Cookie pode estar sujo (workspace removido apos saida) — so redireciona se
+  // ainda eh membro ativo dele.
+  if (allowSkip && active.length > 1) {
+    const cookieStore = await cookies();
+    const lastSlug = cookieStore.get("fluxos_last_ws")?.value;
+    if (lastSlug) {
+      const lastActive = active.find((w) => w.slug === lastSlug);
+      if (lastActive) redirect(`/app/${lastActive.slug}`);
+    }
   }
 
   const isSeniorAdmin = (user.email ?? "").toLowerCase() === SENIOR_ADMIN_EMAIL;
