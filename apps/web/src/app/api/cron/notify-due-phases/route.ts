@@ -9,11 +9,6 @@ export const dynamic = "force-dynamic";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://fluxos.fabd.com.br";
 
-// Janela em torno do milestone que conta como "hora certa de disparar".
-// Disparador externo (GH Actions) roda a cada 10min — janela 15min cobre
-// atraso normal do scheduler do GH e evita perder milestone.
-const WINDOW_MS = 15 * 60 * 1000;
-
 // Brasil: UTC-3 fixo (sem DST desde 2019).
 const BR_TZ = "America/Maceio";
 
@@ -46,8 +41,10 @@ type PhaseExpanded = {
  *   - today:     hora do due (ou 09h BR se hora == 00h)  ("vence hoje" / "vence agora")
  *   - yesterday: 09h BR do dia seguinte ao due           ("atrasada")
  *
- * Dispara se `now` ∈ [milestone, milestone + 15min] e ainda nao foi enviado
+ * Dispara se `now >= milestone` e ainda nao foi enviado
  * (dedup via phase_notification_log com chave (phase, user, type, day)).
+ * Sem janela: GH Actions atrasa em horario de pico, entao basta o dedup
+ * pra evitar duplicata.
  *
  * Targets (admin/diretor/membro): mesma regra anterior.
  *
@@ -175,7 +172,7 @@ async function runJob(req: Request) {
 
   let sent = 0;
   let skippedAlreadySent = 0;
-  let skippedOutOfWindow = 0;
+  let skippedFuture = 0;
   const errors: string[] = [];
 
   for (const ph of phases) {
@@ -185,9 +182,10 @@ async function runJob(req: Request) {
     for (const [milestone, mAt] of Object.entries(milestones) as Array<
       [Milestone, Date]
     >) {
-      const diff = now.getTime() - mAt.getTime();
-      if (diff < 0 || diff > WINDOW_MS) {
-        skippedOutOfWindow++;
+      // Sem janela: dispara assim que passar do milestone. Dedup por dia
+      // garante 1 envio por (phase, user, type, day) mesmo com runs atrasados.
+      if (now.getTime() < mAt.getTime()) {
+        skippedFuture++;
         continue;
       }
 
@@ -336,7 +334,7 @@ async function runJob(req: Request) {
     phasesScanned: phases.length,
     sent,
     skippedAlreadySent,
-    skippedOutOfWindow,
+    skippedFuture,
     errors,
   });
 }
