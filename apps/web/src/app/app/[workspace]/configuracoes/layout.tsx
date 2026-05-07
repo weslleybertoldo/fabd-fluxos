@@ -37,6 +37,7 @@ export default async function ConfiguracoesLayout({
           <>
             <SubTab href={`/app/${slug}/configuracoes/diretorias`} label="Diretorias" />
             <SubTab href={`/app/${slug}/configuracoes/membros`} label="Membros" />
+            <SubTab href={`/app/${slug}/configuracoes/geral`} label="Geral" />
           </>
         ) : null}
       </nav>

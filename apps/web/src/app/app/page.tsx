@@ -39,6 +39,7 @@ export default async function AppHomePage({
         name: string;
         slug: string;
         created_at: string;
+        is_discoverable: boolean;
         member_status: string | null;
         member_role: string | null;
       }> | null;
@@ -53,6 +54,7 @@ export default async function AppHomePage({
     created_at: w.created_at,
     updated_at: w.created_at,
     created_by: "",
+    is_discoverable: w.is_discoverable,
     member_status: (w.member_status as WorkspaceMemberRow["status"] | null) ?? null,
     member_role: (w.member_role as WorkspaceMemberRow["role"] | null) ?? null,
   }));

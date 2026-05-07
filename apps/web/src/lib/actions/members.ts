@@ -245,6 +245,60 @@ export async function createWorkspace(input: {
   return { ok: true, data: { id: ws.id, slug: ws.slug } };
 }
 
+/** Liga/desliga visibilidade do workspace na lista publica.
+ *  Admin do workspace decide. Quando false, nao aparece em "Workspaces
+ *  disponiveis" pra quem nao eh membro. Busca por UUID continua achando. */
+export async function setWorkspaceDiscoverable(input: {
+  workspaceId: string;
+  isDiscoverable: boolean;
+}): Promise<ActionResult> {
+  const { supabase, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+
+  const sb = supabase as unknown as {
+    from(table: string): {
+      update(values: Record<string, unknown>): {
+        eq(col: string, val: string): {
+          select(cols: string): Promise<{
+            data: Array<{ id: string; slug: string }> | null;
+            error: { message: string } | null;
+          }>;
+        };
+      };
+    };
+  };
+
+  // RLS ws_update + REVOKE garantem que so admin do workspace pode UPDATE.
+  // .select() retorna a row pra detectar silent zero rows quando RLS bloqueia.
+  const { data, error } = await sb
+    .from("workspaces")
+    .update({ is_discoverable: input.isDiscoverable })
+    .eq("id", input.workspaceId)
+    .select("id, slug");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Sem permissao pra alterar (so admin do workspace)" };
+  }
+
+  await audit({
+    workspaceId: input.workspaceId,
+    entity: "workspace",
+    entityId: input.workspaceId,
+    action: "update",
+    changes: {
+      summary: input.isDiscoverable
+        ? "Workspace agora visivel na lista publica"
+        : "Workspace ocultado da lista publica",
+      after: { is_discoverable: input.isDiscoverable },
+    },
+  });
+
+  const slug = data[0]?.slug;
+  if (slug) revalidatePath(`/app/${slug}/configuracoes`);
+  revalidatePath("/app");
+  return { ok: true };
+}
+
 /** Admin aprova um membro pending — define role e status=active. */
 export async function approveMember(
   workspaceId: string,

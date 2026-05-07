@@ -12,6 +12,7 @@ export type WorkspaceRow = {
   name: string;
   slug: string;
   created_by: string;
+  is_discoverable: boolean;
   created_at: string;
   updated_at: string;
 };
