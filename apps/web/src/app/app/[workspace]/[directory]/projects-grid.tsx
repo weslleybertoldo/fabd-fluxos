@@ -32,6 +32,7 @@ interface Props {
   directorySlug: string;
   projects: ProjectRow[];
   membersByUserId: Record<string, MemberLite>;
+  overdueByProjectId?: Record<string, number>;
   canReorder: boolean;
 }
 
@@ -40,6 +41,7 @@ export function ProjectsGrid({
   directorySlug,
   projects: initialProjects,
   membersByUserId,
+  overdueByProjectId,
   canReorder,
 }: Props) {
   const router = useRouter();
@@ -109,6 +111,7 @@ export function ProjectsGrid({
                 workspaceSlug={workspaceSlug}
                 directorySlug={directorySlug}
                 membersByUserId={membersByUserId}
+                overdueCount={overdueByProjectId?.[p.id] ?? 0}
                 canReorder={canReorder}
                 pending={pending}
               />
@@ -125,6 +128,7 @@ function SortableProjectCard({
   workspaceSlug,
   directorySlug,
   membersByUserId,
+  overdueCount,
   canReorder,
   pending,
 }: {
@@ -132,6 +136,7 @@ function SortableProjectCard({
   workspaceSlug: string;
   directorySlug: string;
   membersByUserId: Record<string, MemberLite>;
+  overdueCount: number;
   canReorder: boolean;
   pending: boolean;
 }) {
@@ -156,7 +161,16 @@ function SortableProjectCard({
   const creator = membersByUserId[project.created_by];
 
   return (
-    <li ref={setNodeRef} style={style}>
+    <li ref={setNodeRef} style={style} className="relative">
+      {overdueCount > 0 ? (
+        <span
+          aria-label={`${overdueCount} pendencia${overdueCount > 1 ? "s" : ""} vencida${overdueCount > 1 ? "s" : ""}`}
+          title={`${overdueCount} pendencia${overdueCount > 1 ? "s" : ""} vencida${overdueCount > 1 ? "s" : ""}`}
+          className="pointer-events-none absolute -right-1 -top-1 z-10 grid min-h-[20px] min-w-[20px] place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white shadow"
+        >
+          {overdueCount > 99 ? "99+" : overdueCount}
+        </span>
+      ) : null}
       <div
         className={`flex h-full flex-col rounded-2xl border border-slate-200 bg-white transition hover:border-slate-300 hover:shadow-md ${
           isDragging ? "ring-2 ring-slate-400" : ""
