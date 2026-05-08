@@ -70,32 +70,25 @@ export default async function DirectoryPage({
   const projects = (projs ?? []) as unknown as ProjectRow[];
 
   // Conta fases vencidas (completed_at IS NULL AND due_date < now) por projeto
-  // pra mostrar badge no card. Vai via flows pq phases.flow_id -> flows.project_id.
+  // pra mostrar badge no card. Agrega no banco via RPC pra evitar trazer 1 row
+  // por fase e agregar em JS. SECURITY INVOKER respeita RLS de flows/phases.
   const overdueByProjectId: Record<string, number> = {};
   if (projects.length) {
-    const projectIds = projects.map((p) => p.id);
-    const { data: flowsData } = await supabase
-      .from("flows")
-      .select("id, project_id")
-      .in("project_id", projectIds);
-    const flows = (flowsData ?? []) as { id: string; project_id: string }[];
-    if (flows.length) {
-      const projectByFlowId = new Map(flows.map((f) => [f.id, f.project_id]));
-      const nowIso = new Date().toISOString();
-      const { data: overdueData } = await supabase
-        .from("phases")
-        .select("flow_id")
-        .in(
-          "flow_id",
-          flows.map((f) => f.id),
-        )
-        .is("completed_at", null)
-        .lt("due_date", nowIso);
-      for (const row of (overdueData ?? []) as { flow_id: string }[]) {
-        const pid = projectByFlowId.get(row.flow_id);
-        if (!pid) continue;
-        overdueByProjectId[pid] = (overdueByProjectId[pid] ?? 0) + 1;
-      }
+    const sb = supabase as unknown as {
+      rpc(
+        fn: string,
+        args: Record<string, unknown>,
+      ): Promise<{
+        data: Array<{ project_id: string; overdue_count: number }> | null;
+        error: { message: string } | null;
+      }>;
+    };
+    const { data: overdueRows } = await sb.rpc(
+      "count_overdue_phases_per_project",
+      { p_project_ids: projects.map((p) => p.id) },
+    );
+    for (const row of overdueRows ?? []) {
+      overdueByProjectId[row.project_id] = Number(row.overdue_count);
     }
   }
 

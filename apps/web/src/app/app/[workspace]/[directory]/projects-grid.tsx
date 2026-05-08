@@ -160,12 +160,17 @@ function SortableProjectCard({
     : null;
   const creator = membersByUserId[project.created_by];
 
+  const overdueLabel =
+    overdueCount > 0
+      ? `${overdueCount} pendencia${overdueCount > 1 ? "s" : ""} vencida${overdueCount > 1 ? "s" : ""}`
+      : null;
+
   return (
     <li ref={setNodeRef} style={style} className="relative">
       {overdueCount > 0 ? (
         <span
-          aria-label={`${overdueCount} pendencia${overdueCount > 1 ? "s" : ""} vencida${overdueCount > 1 ? "s" : ""}`}
-          title={`${overdueCount} pendencia${overdueCount > 1 ? "s" : ""} vencida${overdueCount > 1 ? "s" : ""}`}
+          aria-hidden="true"
+          title={overdueLabel ?? undefined}
           className="pointer-events-none absolute -right-1 -top-1 z-10 grid min-h-[20px] min-w-[20px] place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white shadow"
         >
           {overdueCount > 99 ? "99+" : overdueCount}
@@ -194,6 +199,7 @@ function SortableProjectCard({
             if (pending && canReorder) e.preventDefault();
           }}
         >
+          {overdueLabel ? <span className="sr-only">{overdueLabel}. </span> : null}
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-base font-semibold text-slate-900">
               {project.name}
