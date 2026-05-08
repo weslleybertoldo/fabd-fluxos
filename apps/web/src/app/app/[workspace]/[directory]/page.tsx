@@ -73,6 +73,7 @@ export default async function DirectoryPage({
   // pra mostrar badge no card. Agrega no banco via RPC pra evitar trazer 1 row
   // por fase e agregar em JS. SECURITY INVOKER respeita RLS de flows/phases.
   const overdueByProjectId: Record<string, number> = {};
+  let overdueLoadFailed = false;
   if (projects.length) {
     const sb = supabase as unknown as {
       rpc(
@@ -83,12 +84,20 @@ export default async function DirectoryPage({
         error: { message: string } | null;
       }>;
     };
-    const { data: overdueRows } = await sb.rpc(
+    const { data: overdueRows, error: overdueErr } = await sb.rpc(
       "count_overdue_phases_per_project",
       { p_project_ids: projects.map((p) => p.id) },
     );
-    for (const row of overdueRows ?? []) {
-      overdueByProjectId[row.project_id] = Number(row.overdue_count);
+    if (overdueErr) {
+      overdueLoadFailed = true;
+      console.error(
+        "[directory] count_overdue_phases_per_project falhou:",
+        overdueErr.message,
+      );
+    } else {
+      for (const row of overdueRows ?? []) {
+        overdueByProjectId[row.project_id] = Number(row.overdue_count);
+      }
     }
   }
 
@@ -174,14 +183,22 @@ export default async function DirectoryPage({
           </p>
         </div>
       ) : (
-        <ProjectsGrid
-          workspaceSlug={ctx.workspace.slug}
-          directorySlug={directory.slug}
-          projects={projects}
-          membersByUserId={Object.fromEntries(memberByUserId)}
-          overdueByProjectId={overdueByProjectId}
-          canReorder={ctx.member.role === "admin" && status === "active"}
-        />
+        <>
+          {overdueLoadFailed ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Nao foi possivel carregar a contagem de fases vencidas — os badges
+              podem estar incompletos.
+            </p>
+          ) : null}
+          <ProjectsGrid
+            workspaceSlug={ctx.workspace.slug}
+            directorySlug={directory.slug}
+            projects={projects}
+            membersByUserId={Object.fromEntries(memberByUserId)}
+            overdueByProjectId={overdueByProjectId}
+            canReorder={ctx.member.role === "admin" && status === "active"}
+          />
+        </>
       )}
     </div>
   );
