@@ -69,6 +69,36 @@ export default async function DirectoryPage({
     .order("created_at", { ascending: false });
   const projects = (projs ?? []) as unknown as ProjectRow[];
 
+  // Conta fases vencidas (completed_at IS NULL AND due_date < now) por projeto
+  // pra mostrar badge no card. Vai via flows pq phases.flow_id -> flows.project_id.
+  const overdueByProjectId: Record<string, number> = {};
+  if (projects.length) {
+    const projectIds = projects.map((p) => p.id);
+    const { data: flowsData } = await supabase
+      .from("flows")
+      .select("id, project_id")
+      .in("project_id", projectIds);
+    const flows = (flowsData ?? []) as { id: string; project_id: string }[];
+    if (flows.length) {
+      const projectByFlowId = new Map(flows.map((f) => [f.id, f.project_id]));
+      const nowIso = new Date().toISOString();
+      const { data: overdueData } = await supabase
+        .from("phases")
+        .select("flow_id")
+        .in(
+          "flow_id",
+          flows.map((f) => f.id),
+        )
+        .is("completed_at", null)
+        .lt("due_date", nowIso);
+      for (const row of (overdueData ?? []) as { flow_id: string }[]) {
+        const pid = projectByFlowId.get(row.flow_id);
+        if (!pid) continue;
+        overdueByProjectId[pid] = (overdueByProjectId[pid] ?? 0) + 1;
+      }
+    }
+  }
+
   const allMembers = (membersRes.data ?? []) as unknown as Pick<
     WorkspaceMemberRow,
     "user_id" | "google_full_name" | "google_avatar_url" | "role" | "status"
@@ -156,6 +186,7 @@ export default async function DirectoryPage({
           directorySlug={directory.slug}
           projects={projects}
           membersByUserId={Object.fromEntries(memberByUserId)}
+          overdueByProjectId={overdueByProjectId}
           canReorder={ctx.member.role === "admin" && status === "active"}
         />
       )}
