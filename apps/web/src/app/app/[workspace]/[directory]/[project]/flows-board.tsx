@@ -305,7 +305,6 @@ function SortableFlowColumn(props: {
       />
       <FlowColumnBody
         phases={props.phases}
-        canEdit={props.canEdit}
         canTogglePhase={props.canTogglePhase}
         pending={props.pending}
         flowType={props.flow.type}
@@ -404,7 +403,6 @@ function FlowColumnHeader({
 
 function FlowColumnBody({
   phases,
-  canEdit,
   canTogglePhase,
   pending,
   flowType,
@@ -412,7 +410,6 @@ function FlowColumnBody({
   onOpenPhase,
 }: {
   phases: PhaseRow[];
-  canEdit: boolean;
   canTogglePhase: (phase: PhaseRow) => boolean;
   pending: boolean;
   flowType: "continuous" | "non_continuous";
