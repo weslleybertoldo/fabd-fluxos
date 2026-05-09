@@ -225,8 +225,8 @@ export function PhaseDetailModal({
             <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
               Fase
             </p>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <h2 className="truncate text-xl font-semibold text-slate-900">
+            <div className="mt-0.5 flex items-start gap-1.5">
+              <h2 className="text-xl font-semibold text-slate-900 break-words">
                 {phase.name}
               </h2>
               {phase.color ? (
