@@ -18,7 +18,12 @@ interface Props {
   phaseId: string;
   workspaceId: string;
   currentUserId: string;
+  // canEditPhase: gerencial (admin/diretor projeto/owner flow). Permite
+  // deletar anexos de TERCEIROS. Anexos proprios o uploader sempre pode deletar.
   canEditPhase: boolean;
+  // canUpload: cobre canEditPhase OU responsavel da fase. Permite +Anexar.
+  // Default = canEditPhase pra compat se o callsite nao passar.
+  canUpload?: boolean;
   attachments: PhaseAttachmentRow[];
 }
 
@@ -31,8 +36,10 @@ export function PhaseAttachments({
   workspaceId,
   currentUserId,
   canEditPhase,
+  canUpload,
   attachments,
 }: Props) {
+  const allowUpload = canUpload ?? canEditPhase;
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -124,24 +131,28 @@ export function PhaseAttachments({
           {open ? "▼" : "▶"} Anexos ({attachments.length})
         </button>
 
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleUpload(f);
-            e.target.value = "";
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading || pending}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-        >
-          {uploading ? "Enviando..." : "+ Anexar"}
-        </button>
+        {allowUpload ? (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUpload(f);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || pending}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {uploading ? "Enviando..." : "+ Anexar"}
+            </button>
+          </>
+        ) : null}
       </div>
 
       {error ? (

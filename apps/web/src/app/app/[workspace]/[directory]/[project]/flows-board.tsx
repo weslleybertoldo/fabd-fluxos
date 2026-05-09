@@ -41,6 +41,7 @@ interface Props {
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
+  projectResponsibleUserId: string | null;
   workspaceId: string;
   currentUserId: string;
   currentUserRole: string;
@@ -58,6 +59,7 @@ export function FlowsBoard({
   workspaceSlug,
   directorySlug,
   projectId,
+  projectResponsibleUserId,
   workspaceId,
   currentUserId,
   currentUserRole,
@@ -92,8 +94,17 @@ export function FlowsBoard({
 
   function canEditFlow(flow: FlowRow): boolean {
     if (isAdmin) return true;
-    if (currentUserRole === "diretor" && flow.created_by === currentUserId) return true;
+    if (currentUserRole === "diretor") {
+      if (flow.created_by === currentUserId) return true;
+      if (projectResponsibleUserId === currentUserId) return true;
+    }
     return false;
+  }
+
+  // Editar/concluir uma fase especifica: vale canEditFlow OU ser responsavel da fase
+  function canEditPhase(flow: FlowRow, phase: PhaseRow): boolean {
+    if (canEditFlow(flow)) return true;
+    return responsiblesByPhase[phase.id]?.includes(currentUserId) ?? false;
   }
 
   // Pra reordenar fluxos: admin pode tudo; diretor so pode se for criador de TODOS
@@ -151,7 +162,7 @@ export function FlowsBoard({
   }
 
   function togglePhase(flow: FlowRow, phase: PhaseRow) {
-    if (!canEditFlow(flow)) return;
+    if (!canEditPhase(flow, phase)) return;
     setError(null);
     start(async () => {
       const r = await setPhaseCompleted({
@@ -201,6 +212,7 @@ export function FlowsBoard({
                 directorySlug={directorySlug}
                 projectId={projectId}
                 canEdit={canEditFlow(flow)}
+                canTogglePhase={(p) => canEditPhase(flow, p)}
                 canReorder={canReorder}
                 pending={pending}
                 onTogglePhase={(p) => togglePhase(flow, p)}
@@ -223,6 +235,7 @@ export function FlowsBoard({
           currentUserId={currentUserId}
           currentUserRole={currentUserRole}
           canEdit={canEditFlow(openDetail.flow)}
+          canEditContent={canEditPhase(openDetail.flow, openDetail.phase)}
           phase={openDetail.phase}
           fields={fieldsByPhase[openDetail.phase.id] ?? []}
           valueByFieldPhase={valueByFieldPhase}
@@ -260,6 +273,7 @@ function SortableFlowColumn(props: {
   directorySlug: string;
   projectId: string;
   canEdit: boolean;
+  canTogglePhase: (phase: PhaseRow) => boolean;
   canReorder: boolean;
   pending: boolean;
   onTogglePhase: (phase: PhaseRow) => void;
@@ -292,7 +306,7 @@ function SortableFlowColumn(props: {
       />
       <FlowColumnBody
         phases={props.phases}
-        canEdit={props.canEdit}
+        canTogglePhase={props.canTogglePhase}
         pending={props.pending}
         flowType={props.flow.type}
         onTogglePhase={props.onTogglePhase}
@@ -390,14 +404,14 @@ function FlowColumnHeader({
 
 function FlowColumnBody({
   phases,
-  canEdit,
+  canTogglePhase,
   pending,
   flowType,
   onTogglePhase,
   onOpenPhase,
 }: {
   phases: PhaseRow[];
-  canEdit: boolean;
+  canTogglePhase: (phase: PhaseRow) => boolean;
   pending: boolean;
   flowType: "continuous" | "non_continuous";
   onTogglePhase: (phase: PhaseRow) => void;
@@ -428,7 +442,7 @@ function FlowColumnBody({
             key={p.id}
             phase={p}
             index={i}
-            canEdit={canEdit}
+            canEdit={canTogglePhase(p)}
             pending={pending}
             flowType={flowType}
             onToggle={() => onTogglePhase(p)}

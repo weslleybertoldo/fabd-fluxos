@@ -36,7 +36,14 @@ interface Props {
   workspaceId: string;
   currentUserId: string;
   currentUserRole: string;
+  // canEdit: gerencia a fase em si (menu lapis: editar nome/descricao/cor/data,
+  // mexer nos responsaveis, excluir). So admin/diretor responsavel projeto/owner
+  // do flow.
   canEdit: boolean;
+  // canEditContent: preencher campos + anexar arquivos. Cobre canEdit OU ser
+  // responsavel da fase. Permite que o responsavel da fase trabalhe nela sem
+  // poder mexer em metadados administrativos.
+  canEditContent: boolean;
   phase: PhaseRow;
   fields: PhaseFieldRow[];
   valueByFieldPhase: Record<string, PhaseFieldValueRow>;
@@ -58,6 +65,7 @@ export function PhaseDetailModal({
   currentUserId,
   currentUserRole,
   canEdit,
+  canEditContent,
   phase,
   fields,
   valueByFieldPhase,
@@ -225,8 +233,8 @@ export function PhaseDetailModal({
             <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
               Fase
             </p>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <h2 className="truncate text-xl font-semibold text-slate-900">
+            <div className="mt-0.5 flex items-start gap-1.5">
+              <h2 className="text-xl font-semibold text-slate-900 break-words">
                 {phase.name}
               </h2>
               {phase.color ? (
@@ -465,6 +473,7 @@ export function PhaseDetailModal({
               workspaceId={workspaceId}
               currentUserId={currentUserId}
               canEditPhase={canEdit}
+              canUpload={canEditContent}
               attachments={attachments}
             />
           ) : null}

@@ -19,10 +19,12 @@ type PhaseExpanded = {
   name: string;
   due_date: string;
   completed_at: string | null;
+  created_at: string;
   flow_id: string;
   flow: {
     id: string;
     name: string;
+    created_by: string;
     project: {
       id: string;
       name: string;
@@ -92,10 +94,12 @@ async function runJob(req: Request) {
         name,
         due_date,
         completed_at,
+        created_at,
         flow_id,
         flow:flows!inner(
           id,
           name,
+          created_by,
           project:projects!inner(
             id,
             name,
@@ -173,12 +177,14 @@ async function runJob(req: Request) {
   let sent = 0;
   let skippedAlreadySent = 0;
   let skippedFuture = 0;
+  let skippedBeforeCreated = 0;
   const errors: string[] = [];
 
   for (const ph of phases) {
     const due = new Date(ph.due_date);
     const milestones = computeMilestones(due);
 
+    const createdAt = new Date(ph.created_at);
     for (const [milestone, mAt] of Object.entries(milestones) as Array<
       [Milestone, Date]
     >) {
@@ -188,9 +194,18 @@ async function runJob(req: Request) {
         skippedFuture++;
         continue;
       }
+      // Pula milestone cujo horario eh anterior a criacao da fase.
+      // Ex: fase criada hoje 14h c/ vencimento hoje 20h — o milestone
+      // "tomorrow" cai ontem 9h, ja passado. Nao spammar com email retroativo.
+      if (mAt.getTime() < createdAt.getTime()) {
+        skippedBeforeCreated++;
+        continue;
+      }
 
       const targets = new Set<string>();
       for (const uid of respByPhase.get(ph.id) ?? []) targets.add(uid);
+      // Responsavel do flow (criador) recebe de todas as fases do flow
+      targets.add(ph.flow.created_by);
       const projResp = ph.flow.project.responsible_user_id;
       if (projResp) targets.add(projResp);
       const wsIdLoop = ph.flow.project.directory.workspace_id;
@@ -335,6 +350,7 @@ async function runJob(req: Request) {
     sent,
     skippedAlreadySent,
     skippedFuture,
+    skippedBeforeCreated,
     errors,
   });
 }

@@ -161,7 +161,16 @@ export function PhasesPanel({
     });
   }
 
+  // Responsavel da fase pode concluir/reabrir AQUELA fase + abrir o detail
+  // pra preencher campos/anexar (ph_update e pfv_*/att_insert RLS aceitam).
+  // canEdit (admin/diretor proj/owner flow) continua dando acesso a tudo.
+  function canEditPhase(phaseId: string): boolean {
+    if (canEdit) return true;
+    return responsiblesByPhase[phaseId]?.includes(currentUserId) ?? false;
+  }
+
   function toggleComplete(phase: PhaseRow) {
+    if (!canEditPhase(phase.id)) return;
     setError(null);
     start(async () => {
       const r = await setPhaseCompleted({
@@ -294,6 +303,7 @@ export function PhasesPanel({
                   index={i}
                   flowType={flowType}
                   canEdit={canEdit}
+                  canTogglePhase={canEditPhase(p.id)}
                   pending={pending}
                   onToggle={() => toggleComplete(p)}
                   onEdit={() => setEditing(p)}
@@ -316,6 +326,7 @@ export function PhasesPanel({
           phases={phases}
           flowType={flowType}
           canEdit={canEdit}
+          canTogglePhase={canEditPhase}
           pending={pending}
           onToggle={toggleComplete}
           onEdit={setEditing}
@@ -378,6 +389,7 @@ export function PhasesPanel({
           currentUserId={currentUserId}
           currentUserRole={currentUserRole}
           canEdit={canEdit}
+          canEditContent={canEditPhase(openDetail.id)}
           phase={openDetail}
           fields={fieldsByPhase[openDetail.id] ?? []}
           valueByFieldPhase={valueByFieldPhase}
@@ -400,6 +412,7 @@ function ContinuousGroupedList({
   phases,
   flowType,
   canEdit,
+  canTogglePhase,
   pending,
   onToggle,
   onEdit,
@@ -415,6 +428,7 @@ function ContinuousGroupedList({
   phases: PhaseRow[];
   flowType: "continuous" | "non_continuous";
   canEdit: boolean;
+  canTogglePhase: (phaseId: string) => boolean;
   pending: boolean;
   onToggle: (p: PhaseRow) => void;
   onEdit: (p: PhaseRow) => void;
@@ -462,6 +476,7 @@ function ContinuousGroupedList({
                 index={startIdx}
                 flowType={flowType}
                 canEdit={canEdit}
+                canTogglePhase={canTogglePhase(single.id)}
                 pending={pending}
                 onToggle={() => onToggle(single)}
                 onEdit={() => onEdit(single)}
@@ -486,6 +501,7 @@ function ContinuousGroupedList({
                   index={startIdx + j}
                   flowType={flowType}
                   canEdit={canEdit}
+                  canTogglePhase={canTogglePhase(p.id)}
                   pending={pending}
                   onToggle={() => onToggle(p)}
                   onEdit={() => onEdit(p)}
@@ -511,6 +527,7 @@ function SortablePhaseItem(props: {
   index: number;
   flowType: "continuous" | "non_continuous";
   canEdit: boolean;
+  canTogglePhase: boolean;
   pending: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -563,6 +580,7 @@ function PhaseCard({
   index,
   flowType,
   canEdit,
+  canTogglePhase,
   pending,
   onToggle,
   onEdit,
@@ -579,6 +597,7 @@ function PhaseCard({
   index: number;
   flowType: "continuous" | "non_continuous";
   canEdit: boolean;
+  canTogglePhase: boolean;
   pending: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -607,7 +626,7 @@ function PhaseCard({
         <button
           type="button"
           onClick={onToggle}
-          disabled={!canEdit || pending}
+          disabled={!canTogglePhase || pending}
           aria-label={completed ? "Marcar como nao concluida" : "Marcar como concluida"}
           className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 transition ${
             completed
