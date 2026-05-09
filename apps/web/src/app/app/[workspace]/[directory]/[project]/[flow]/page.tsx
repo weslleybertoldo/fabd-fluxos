@@ -221,12 +221,19 @@ export default async function FlowPage({
   const memberByUserId = new Map(allMembers.map((m) => [m.user_id, m]));
   const creator = memberByUserId.get(flow.created_by);
 
-  // can_edit_flow: admin OU diretor que criou o flow
+  // can_edit_flow: admin OU diretor que criou o flow OU diretor responsavel pelo projeto
   const isAdmin = ctx.member.role === "admin";
-  const isOwnerDiretor =
-    ctx.member.role === "diretor" && flow.created_by === ctx.member.user_id;
-  const canEdit = isAdmin || isOwnerDiretor;
+  const isDiretor = ctx.member.role === "diretor";
+  const isOwnerDiretor = isDiretor && flow.created_by === ctx.member.user_id;
+  const isProjectResponsibleDiretor =
+    isDiretor && project.responsible_user_id === ctx.member.user_id;
+  const canEdit = isAdmin || isOwnerDiretor || isProjectResponsibleDiretor;
   const canDelete = canEdit;
+  // Helper: editar/concluir uma fase especifica — vale canEdit OU ser responsavel da fase
+  const canEditPhase = (phaseId: string): boolean => {
+    if (canEdit) return true;
+    return responsiblesByPhase[phaseId]?.includes(ctx.member.user_id) ?? false;
+  };
 
   return (
     <div className="space-y-8">

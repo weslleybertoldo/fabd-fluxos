@@ -447,6 +447,7 @@ export default async function ProjectPage({
             workspaceSlug={ctx.workspace.slug}
             directorySlug={directory.slug}
             projectId={project.id}
+            projectResponsibleUserId={project.responsible_user_id}
             workspaceId={ctx.workspace.id}
             currentUserId={ctx.member.user_id}
             currentUserRole={ctx.member.role}
