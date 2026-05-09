@@ -457,7 +457,7 @@ export function PhaseDetailModal({
               projectId={projectId}
               flowId={flowId}
               phaseId={phase.id}
-              canEditFields={canEditContent}
+              canEditFields={canEdit}
               fields={fields}
               valueByFieldPhase={valueByFieldPhase}
             />
@@ -472,7 +472,8 @@ export function PhaseDetailModal({
               phaseId={phase.id}
               workspaceId={workspaceId}
               currentUserId={currentUserId}
-              canEditPhase={canEditContent}
+              canEditPhase={canEdit}
+              canUpload={canEditContent}
               attachments={attachments}
             />
           ) : null}

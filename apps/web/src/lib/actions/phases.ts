@@ -358,41 +358,25 @@ export async function setPhaseCompleted(input: {
     }
 
     if (nextPhase) {
-      // Mobile fields originados desta fase
-      const { data: mobileFields } = await supabase
-        .from("phase_fields")
-        .select("id")
-        .eq("mode", "mobile");
-      const mobileFieldIds = (
-        (mobileFields ?? []) as unknown as { id: string }[]
-      ).map((f) => f.id);
-
-      if (mobileFieldIds.length > 0) {
-        // Move values: current_phase_id = nextPhase.id, so dos mobile fields que
-        // atualmente vivem na fase concluida.
-        type SbUpdate2 = {
-          from: (t: string) => {
-            update: (v: Record<string, unknown>) => {
-              eq: (
-                c: string,
-                v: string,
-              ) => {
-                in: (
-                  c: string,
-                  vs: string[],
-                ) => Promise<{ error: { message: string } | null }>;
-              };
-            };
-          };
+      // Move mobile fields via RPC SECURITY DEFINER: a policy pfv_update exige
+      // is_phase_responsible(NEW.current_phase_id) no WITH CHECK, e responsavel
+      // da fase concluida normalmente nao eh responsavel da proxima -> RLS
+      // bloqueava silently. A RPC valida autorizacao na origem e bypassa RLS.
+      type SbRpc = {
+        rpc: (
+          fn: string,
+          args: Record<string, unknown>,
+        ) => Promise<{ data: number | null; error: { message: string } | null }>;
+      };
+      const { error: moveErr } = await (supabase as unknown as SbRpc).rpc(
+        "move_mobile_field_values",
+        { p_from_phase_id: input.phaseId, p_to_phase_id: nextPhase.id },
+      );
+      if (moveErr) {
+        return {
+          ok: false,
+          error: `Fase concluida, mas falha ao mover campos mobile: ${moveErr.message}`,
         };
-        await (supabase as unknown as SbUpdate2)
-          .from("phase_field_values")
-          .update({
-            current_phase_id: nextPhase.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("current_phase_id", input.phaseId)
-          .in("phase_field_id", mobileFieldIds);
       }
     }
   }
