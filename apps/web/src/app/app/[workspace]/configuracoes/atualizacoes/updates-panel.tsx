@@ -24,17 +24,6 @@ interface ReleaseInfo {
 }
 
 /**
- * Encontra um asset da release pelo sufixo do nome (ex: ".apk", ".exe").
- * GitHub normaliza espacos em pontos quando o asset eh enviado com nome com
- * espaco — usar a URL real do asset eh mais robusto que construir o nome.
- */
-function findAsset(release: ReleaseInfo | null, suffix: string): string | null {
-  if (!release?.assets) return null;
-  const a = release.assets.find((x) => x.name.toLowerCase().endsWith(suffix));
-  return a?.url ?? null;
-}
-
-/**
  * Click handler universal pra download.
  * - APK Capacitor (dentro do app): abre Custom Tab via @capacitor/browser.
  *   O Custom Tab eh Chrome real, sabe lidar com Content-Disposition.

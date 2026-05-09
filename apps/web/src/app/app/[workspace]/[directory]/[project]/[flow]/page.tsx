@@ -229,11 +229,9 @@ export default async function FlowPage({
     isDiretor && project.responsible_user_id === ctx.member.user_id;
   const canEdit = isAdmin || isOwnerDiretor || isProjectResponsibleDiretor;
   const canDelete = canEdit;
-  // Helper: editar/concluir uma fase especifica — vale canEdit OU ser responsavel da fase
-  const canEditPhase = (phaseId: string): boolean => {
-    if (canEdit) return true;
-    return responsiblesByPhase[phaseId]?.includes(ctx.member.user_id) ?? false;
-  };
+  // Per-fase gating (responsavel da fase pode toggle + preencher campos +
+  // anexar AQUELA fase) e computado dentro de PhasesPanel a partir de
+  // responsiblesByPhase + currentUserId.
 
   return (
     <div className="space-y-8">
