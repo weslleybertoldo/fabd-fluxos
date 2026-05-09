@@ -228,7 +228,10 @@ export default async function FlowPage({
   const isProjectResponsibleDiretor =
     isDiretor && project.responsible_user_id === ctx.member.user_id;
   const canEdit = isAdmin || isOwnerDiretor || isProjectResponsibleDiretor;
-  const canDelete = canEdit;
+  // Delete continua so admin (consistente com prj_delete que exige
+  // is_workspace_admin). Diretor responsavel projeto / owner do flow podem
+  // editar mas nao deletar.
+  const canDelete = isAdmin;
   // Per-fase gating (responsavel da fase pode toggle + preencher campos +
   // anexar AQUELA fase) e computado dentro de PhasesPanel a partir de
   // responsiblesByPhase + currentUserId.

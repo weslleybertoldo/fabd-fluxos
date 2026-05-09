@@ -177,6 +177,7 @@ async function runJob(req: Request) {
   let sent = 0;
   let skippedAlreadySent = 0;
   let skippedFuture = 0;
+  let skippedBeforeCreated = 0;
   const errors: string[] = [];
 
   for (const ph of phases) {
@@ -197,7 +198,7 @@ async function runJob(req: Request) {
       // Ex: fase criada hoje 14h c/ vencimento hoje 20h — o milestone
       // "tomorrow" cai ontem 9h, ja passado. Nao spammar com email retroativo.
       if (mAt.getTime() < createdAt.getTime()) {
-        skippedFuture++;
+        skippedBeforeCreated++;
         continue;
       }
 
@@ -349,6 +350,7 @@ async function runJob(req: Request) {
     sent,
     skippedAlreadySent,
     skippedFuture,
+    skippedBeforeCreated,
     errors,
   });
 }

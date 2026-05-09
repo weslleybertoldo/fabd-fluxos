@@ -234,7 +234,8 @@ export function FlowsBoard({
           workspaceId={workspaceId}
           currentUserId={currentUserId}
           currentUserRole={currentUserRole}
-          canEdit={canEditPhase(openDetail.flow, openDetail.phase)}
+          canEdit={canEditFlow(openDetail.flow)}
+          canEditContent={canEditPhase(openDetail.flow, openDetail.phase)}
           phase={openDetail.phase}
           fields={fieldsByPhase[openDetail.phase.id] ?? []}
           valueByFieldPhase={valueByFieldPhase}

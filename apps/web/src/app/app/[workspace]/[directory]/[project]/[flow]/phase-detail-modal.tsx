@@ -36,7 +36,14 @@ interface Props {
   workspaceId: string;
   currentUserId: string;
   currentUserRole: string;
+  // canEdit: gerencia a fase em si (menu lapis: editar nome/descricao/cor/data,
+  // mexer nos responsaveis, excluir). So admin/diretor responsavel projeto/owner
+  // do flow.
   canEdit: boolean;
+  // canEditContent: preencher campos + anexar arquivos. Cobre canEdit OU ser
+  // responsavel da fase. Permite que o responsavel da fase trabalhe nela sem
+  // poder mexer em metadados administrativos.
+  canEditContent: boolean;
   phase: PhaseRow;
   fields: PhaseFieldRow[];
   valueByFieldPhase: Record<string, PhaseFieldValueRow>;
@@ -58,6 +65,7 @@ export function PhaseDetailModal({
   currentUserId,
   currentUserRole,
   canEdit,
+  canEditContent,
   phase,
   fields,
   valueByFieldPhase,
@@ -465,6 +473,7 @@ export function PhaseDetailModal({
               workspaceId={workspaceId}
               currentUserId={currentUserId}
               canEditPhase={canEdit}
+              canUpload={canEditContent}
               attachments={attachments}
             />
           ) : null}

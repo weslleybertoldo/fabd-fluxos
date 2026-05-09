@@ -388,7 +388,8 @@ export function PhasesPanel({
           workspaceId={workspaceId}
           currentUserId={currentUserId}
           currentUserRole={currentUserRole}
-          canEdit={canEditPhase(openDetail.id)}
+          canEdit={canEdit}
+          canEditContent={canEditPhase(openDetail.id)}
           phase={openDetail}
           fields={fieldsByPhase[openDetail.id] ?? []}
           valueByFieldPhase={valueByFieldPhase}
