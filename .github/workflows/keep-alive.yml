@@ -12,11 +12,13 @@ jobs:
     steps:
       - name: Ping runtime do projeto (auth/v1/health)
         # Trafego HTTP no host <ref>.supabase.co — exatamente o tipo de
-        # trafego que uso normal faz. Anon key e publica (vai pro frontend).
+        # trafego que uso normal faz. Usa sb_publishable_ (formato novo,
+        # publica por design) em vez do anon JWT legacy — pra nao quebrar
+        # se user rotar o JWT secret pra invalidar chaves antigas vazadas.
         run: |
           set -e
           RES=$(curl -s -w "\n%{http_code}" \
-            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5leHZmbGRkbXVidGNpemVydmRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczOTYyODMsImV4cCI6MjA5Mjk3MjI4M30.a6OUNyfJpyGoiRRU1QG0P-1-3RftDhWXiJsPEjgOFoM" \
+            -H "apikey: sb_publishable_uBaYAD5DOgTUHLy5YraKfA_IJBZiBHe" \
             "https://nexvflddmubtcizervda.supabase.co/auth/v1/health")
           CODE=$(echo "$RES" | tail -1)
           echo "fabd-fluxos runtime ping: HTTP $CODE"
