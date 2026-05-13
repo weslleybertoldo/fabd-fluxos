@@ -1,11 +1,13 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, Notification } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain } = require("electron");
 const path = require("node:path");
 
-// Atualizacoes manuais (sem download/instalacao automatica) — comportamento
-// igual ao FABD Planner: o usuario clica "Verificar atualizacoes" em
-// Configuracoes; se houver nova versao, ele baixa o instalador manualmente
-// pelo link do release. Adicionalmente, no startup fazemos um check
-// silencioso e disparamos uma Notification nativa do SO se houver nova versao.
+// Auto-update via electron-updater + GitHub Releases (mesmo fluxo do FABD Planner):
+//   1) Startup -> check silencioso -> renderer recebe 'updater:update-available'
+//   2) Renderer mostra popup "Atualizar agora? / Mais tarde"
+//   3) "Agora" -> downloadUpdate() em background -> progresso -> 'update-downloaded'
+//   4) Popup "Reiniciar agora / Reiniciar depois" -> quitAndInstall ou adia
+//   5) Se adiou: arquivo fica no cache. Proxima abertura, checkForUpdates()
+//      detecta cache valido e emite 'update-downloaded' direto.
 
 const isDev = process.env.FABD_DEV === "1";
 const APP_URL = isDev ? "http://localhost:3000" : "https://fluxos.fabd.com.br";
@@ -13,17 +15,9 @@ const APP_URL = isDev ? "http://localhost:3000" : "https://fluxos.fabd.com.br";
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 
-async function fetchLatestRelease() {
-  const response = await fetch(`${APP_URL}/api/latest-release`);
-  if (!response.ok) {
-    throw new Error(`Endpoint retornou ${response.status}`);
-  }
-  return response.json();
-}
-
-function compareVersion(latest, current) {
-  const norm = (v) => String(v || "").replace(/^v/, "").trim();
-  return norm(latest) !== norm(current) ? "outdated" : "current";
+function log(level, ...args) {
+  const line = `[${new Date().toISOString()}] [${level}] ${args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ")}`;
+  console.log(line);
 }
 
 ipcMain.handle("app:get-version", () => app.getVersion());
@@ -36,34 +30,88 @@ ipcMain.handle("app:open-external", async (_event, url) => {
   return { ok: true };
 });
 
-ipcMain.handle("check-for-updates", async () => {
-  try {
-    const data = await fetchLatestRelease();
-    const latest = String(data.tag_name || "").replace(/^v/, "");
-    const current = app.getVersion();
-    if (!latest) {
-      return { status: "no-result", message: "Sem release publicado ainda." };
-    }
-    if (compareVersion(latest, current) === "current") {
-      return {
-        status: "ok",
-        message: `Voce esta na versao mais recente (v${current}).`,
-        version: latest,
-      };
-    }
-    return {
-      status: "update-available",
-      message: `Atualizacao disponivel: v${latest} (atual v${current}).`,
-      version: latest,
-      url: data.html_url,
-    };
-  } catch (err) {
-    return {
-      status: "error",
-      message: `Erro ao verificar: ${err instanceof Error ? err.message : String(err)}`,
-    };
+function setupAutoUpdater() {
+  if (isDev) {
+    log("INFO", "[updater] dev mode, skip");
+    return;
   }
-});
+  try {
+    const { autoUpdater } = require("electron-updater");
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.logger = {
+      info: (m) => log("INFO", "[updater]", m),
+      warn: (m) => log("WARN", "[updater]", m),
+      error: (m) => log("ERROR", "[updater]", m),
+      debug: () => {},
+    };
+
+    autoUpdater.on("update-available", (info) => {
+      log("INFO", "[updater] disponivel:", info.version);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("updater:update-available", {
+          version: info.version,
+          releaseNotes: info.releaseNotes || "",
+          releaseDate: info.releaseDate,
+        });
+      }
+    });
+    autoUpdater.on("update-not-available", () => log("INFO", "[updater] sem update"));
+    autoUpdater.on("download-progress", (p) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("updater:download-progress", {
+          percent: Math.round(p.percent),
+          bytesPerSecond: p.bytesPerSecond,
+          transferred: p.transferred,
+          total: p.total,
+        });
+      }
+    });
+    autoUpdater.on("update-downloaded", (info) => {
+      log("INFO", "[updater] baixado:", info.version);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("updater:update-downloaded", {
+          version: info.version,
+        });
+      }
+    });
+    autoUpdater.on("error", (err) => {
+      log("ERROR", "[updater] erro:", err?.message || String(err));
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("updater:error", {
+          message: err?.message || String(err),
+        });
+      }
+    });
+
+    ipcMain.handle("updater:download", async () => {
+      try {
+        await autoUpdater.downloadUpdate();
+        return { ok: true };
+      } catch (err) {
+        const msg = err?.message || String(err);
+        log("ERROR", "[updater] downloadUpdate falhou:", msg);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("updater:error", { message: msg });
+        }
+        return { ok: false, error: msg };
+      }
+    });
+    ipcMain.handle("updater:install", () => {
+      log("INFO", "[updater] quitAndInstall");
+      setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      return { ok: true };
+    });
+
+    setTimeout(() => {
+      autoUpdater
+        .checkForUpdates()
+        .catch((err) => log("WARN", "[updater] checkForUpdates falhou:", err?.message));
+    }, 5000);
+  } catch (e) {
+    log("WARN", "[updater] setup falhou:", e?.message);
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -100,16 +148,8 @@ function buildMenu() {
     {
       label: "Arquivo",
       submenu: [
-        {
-          label: "Recarregar",
-          accelerator: "CmdOrCtrl+R",
-          click: () => mainWindow?.reload(),
-        },
-        {
-          label: "Inspecionar (DevTools)",
-          accelerator: "CmdOrCtrl+Shift+I",
-          click: () => mainWindow?.webContents.toggleDevTools(),
-        },
+        { label: "Recarregar", accelerator: "CmdOrCtrl+R", click: () => mainWindow?.reload() },
+        { label: "Inspecionar (DevTools)", accelerator: "CmdOrCtrl+Shift+I", click: () => mainWindow?.webContents.toggleDevTools() },
         { type: "separator" },
         { role: "quit", label: "Sair" },
       ],
@@ -132,59 +172,28 @@ function buildMenu() {
         {
           label: "Verificar atualizacoes",
           click: () => {
-            if (!mainWindow) return;
-            mainWindow.loadURL(`${APP_URL}/app`);
-            shell.openExternal(`${APP_URL}/app`);
+            try {
+              const { autoUpdater } = require("electron-updater");
+              autoUpdater.checkForUpdates().catch(() => {});
+            } catch {
+              /* dev mode */
+            }
           },
         },
-        {
-          label: "Site",
-          click: () => shell.openExternal("https://fluxos.fabd.com.br"),
-        },
+        { label: "Site", click: () => shell.openExternal("https://fluxos.fabd.com.br") },
       ],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-async function silentStartupCheck() {
-  if (isDev) return;
-  try {
-    const data = await fetchLatestRelease();
-    const latest = String(data.tag_name || "").replace(/^v/, "");
-    const current = app.getVersion();
-    if (!latest || compareVersion(latest, current) === "current") return;
-    if (!Notification.isSupported()) return;
-    const notif = new Notification({
-      title: "FABD Fluxos — atualizacao disponivel",
-      body: `Nova versao v${latest} foi publicada (voce esta na v${current}). Clique para baixar.`,
-      silent: false,
-    });
-    notif.on("click", () => {
-      shell.openExternal(data.html_url || `${APP_URL}/app`);
-    });
-    notif.show();
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("update-available", {
-        version: latest,
-        url: data.html_url,
-      });
-    }
-  } catch (err) {
-    console.error("[updates] startup check falhou:", err?.message || err);
-  }
-}
-
 app.whenReady().then(() => {
-  // Necessario pra Notification do Windows funcionar fora de Squirrel.
-  // Sem isso, Notification falha silenciosamente em prod (electron #41164).
-  // Valor deve casar com appId do electron-builder.
   if (process.platform === "win32") {
     app.setAppUserModelId("br.com.fabd.fluxos");
   }
   buildMenu();
   createWindow();
-  setTimeout(silentStartupCheck, 4000);
+  setupAutoUpdater();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
