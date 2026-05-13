@@ -148,7 +148,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: exe
-          path: apps/desktop/dist/FABD-Fluxos-Setup-${{ steps.version.outputs.current }}.exe
+          path: |
+            apps/desktop/dist/FABD-Fluxos-Setup-${{ steps.version.outputs.current }}.exe
+            apps/desktop/dist/latest.yml
+            apps/desktop/dist/*.blockmap
           retention-days: 7
 
   release:
@@ -195,6 +198,8 @@ jobs:
           files: |
             artifacts/FABD-Fluxos-${{ needs.apk.outputs.version }}.apk
             artifacts/FABD-Fluxos-Setup-${{ needs.apk.outputs.version }}.exe
+            artifacts/latest.yml
+            artifacts/*.blockmap
           generate_release_notes: true
           make_latest: true
 

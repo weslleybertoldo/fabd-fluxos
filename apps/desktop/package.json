@@ -1,6 +1,6 @@
 {
   "name": "@fabd-fluxos/desktop",
-  "version": "1.37.0",
+  "version": "1.38.0",
   "private": true,
   "author": "Weslley Bertoldo <weslleybertoldo18@gmail.com>",
   "description": "FABD Fluxos — wrapper Electron (Windows)",
@@ -47,7 +47,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "FABD-Fluxos-Setup-${version}.${ext}"
     },
     "publish": {
       "provider": "github",
