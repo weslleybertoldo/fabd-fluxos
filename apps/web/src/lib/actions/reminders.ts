@@ -215,6 +215,63 @@ export async function setReminderCompleted(input: {
   return { ok: true, data: undefined };
 }
 
+export async function updateReminder(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  reminderId: string;
+  name: string;
+  dueDate: string | null;
+  recurrence: "once" | "daily";
+}): Promise<ActionResult> {
+  const { sb } = await getDb();
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Nome obrigatorio" };
+  if (name.length > 200) return { ok: false, error: "Nome muito longo" };
+  const recurrence = input.recurrence === "daily" ? "daily" : "once";
+  if (!input.dueDate) {
+    return {
+      ok: false,
+      error: recurrence === "daily" ? "Informe o horario" : "Informe a data/hora",
+    };
+  }
+
+  const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
+  if (!ctx.ok) return ctx;
+
+  // ao editar, zera os marcadores de disparo pra valer o novo horario/recorrencia
+  const { data, error } = await sb
+    .from("reminders")
+    .update({
+      name,
+      due_date: input.dueDate,
+      recurrence,
+      notified_at: null,
+      last_notified_on: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.reminderId)
+    .select()
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Sem permissao" };
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "reminder",
+    entityId: input.reminderId,
+    action: "update",
+    changes: { after: { name, due_date: input.dueDate, recurrence } },
+    context: ctxAudit(ctx),
+  });
+
+  revalidatePath(
+    `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}`,
+  );
+  return { ok: true, data: undefined };
+}
+
 export async function deleteReminder(input: {
   workspaceSlug: string;
   directorySlug: string;
