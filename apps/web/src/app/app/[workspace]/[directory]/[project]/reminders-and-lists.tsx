@@ -50,26 +50,50 @@ function RemindersBox({
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  const [mode, setMode] = useState<"once" | "daily">("once");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   function submit(formData: FormData) {
     setError(null);
     const name = (formData.get("name") as string) ?? "";
-    const dueDate = (formData.get("due_date") as string) ?? "";
+
+    let dueIso: string | null = null;
+    if (mode === "once") {
+      const dueDate = (formData.get("due_date") as string) ?? "";
+      dueIso = dueDate ? new Date(dueDate).toISOString() : null;
+      if (!dueIso) {
+        setError("Informe a data e hora");
+        return;
+      }
+    } else {
+      // recorrente: so o horario; uso hoje + hora (a data e ignorada no disparo diario)
+      const time = (formData.get("time") as string) ?? "";
+      if (!time) {
+        setError("Informe o horario");
+        return;
+      }
+      const [h, m] = time.split(":").map(Number);
+      const d = new Date();
+      d.setHours(h ?? 0, m ?? 0, 0, 0);
+      dueIso = d.toISOString();
+    }
+
     start(async () => {
       const r = await createReminder({
         workspaceSlug,
         directorySlug,
         projectId,
         name,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        dueDate: dueIso,
+        recurrence: mode,
       });
       if (!r.ok) {
         setError(r.error);
         return;
       }
       setAdding(false);
+      setMode("once");
       router.refresh();
     });
   }
@@ -135,12 +159,45 @@ function RemindersBox({
             className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
             disabled={pending}
           />
-          <input
-            name="due_date"
-            type="datetime-local"
-            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
-            disabled={pending}
-          />
+
+          <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-[11px]">
+            {(["once", "daily"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                disabled={pending}
+                className={[
+                  "flex-1 rounded-md px-2 py-1 font-medium transition",
+                  mode === m
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-900",
+                ].join(" ")}
+              >
+                {m === "once" ? "Único" : "Recorrente"}
+              </button>
+            ))}
+          </div>
+
+          {mode === "once" ? (
+            <input
+              name="due_date"
+              type="datetime-local"
+              className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+              disabled={pending}
+            />
+          ) : (
+            <div className="space-y-1">
+              <input
+                name="time"
+                type="time"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                disabled={pending}
+              />
+              <p className="text-[10px] text-slate-400">Dispara todos os dias nesse horario.</p>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={pending}
@@ -163,8 +220,9 @@ function RemindersBox({
         <ul className="space-y-2">
           {reminders.map((r) => {
             const completed = !!r.completed_at;
+            const isDaily = r.recurrence === "daily";
             const isOverdue =
-              !completed && r.due_date && new Date(r.due_date) < new Date();
+              !completed && !isDaily && r.due_date && new Date(r.due_date) < new Date();
             const tone = completed
               ? "border-emerald-200 bg-emerald-50"
               : isOverdue
@@ -204,7 +262,9 @@ function RemindersBox({
                         isOverdue ? "font-semibold text-red-700" : "text-slate-500"
                       }`}
                     >
-                      {formatDate(r.due_date)}
+                      {isDaily
+                        ? `Todo dia às ${formatTime(r.due_date)}`
+                        : formatDate(r.due_date)}
                       {isOverdue ? " · vencido" : null}
                     </p>
                   ) : null}
@@ -225,6 +285,13 @@ function RemindersBox({
       )}
     </section>
   );
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatDate(iso: string) {
