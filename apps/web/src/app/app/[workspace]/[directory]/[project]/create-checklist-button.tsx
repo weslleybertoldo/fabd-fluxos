@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createChecklist, type ChecklistSectionInput } from "@/lib/actions/checklists";
 
@@ -12,9 +12,7 @@ interface Props {
 
 type Mode = "simple" | "flow";
 
-type SectionDraft = { title: string; description: string; itemsText: string };
-
-const emptySection = (): SectionDraft => ({ title: "", description: "", itemsText: "" });
+type SectionDraft = { id: string; title: string; description: string; itemsText: string };
 
 function toItems(text: string): string[] {
   return text
@@ -39,9 +37,16 @@ export function CreateChecklistButton({
   const [simpleDesc, setSimpleDesc] = useState("");
   const [simpleItems, setSimpleItems] = useState("");
 
-  // modo em fluxo (varias secoes)
+  // modo em fluxo (varias secoes) — id estavel por secao (key do React)
+  const seqRef = useRef(0);
+  const newSection = (): SectionDraft => ({
+    id: `s${seqRef.current++}`,
+    title: "",
+    description: "",
+    itemsText: "",
+  });
   const [flowName, setFlowName] = useState("");
-  const [sections, setSections] = useState<SectionDraft[]>([emptySection()]);
+  const [sections, setSections] = useState<SectionDraft[]>(() => [newSection()]);
 
   function reset() {
     setMode("simple");
@@ -49,7 +54,7 @@ export function CreateChecklistButton({
     setSimpleDesc("");
     setSimpleItems("");
     setFlowName("");
-    setSections([emptySection()]);
+    setSections([newSection()]);
     setError(null);
   }
 
@@ -231,7 +236,7 @@ export function CreateChecklistButton({
 
                 <div className="space-y-3">
                   {sections.map((s, i) => (
-                    <div key={i} className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div key={s.id} className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Secao {i + 1}
@@ -275,7 +280,7 @@ export function CreateChecklistButton({
                   ))}
                   <button
                     type="button"
-                    onClick={() => setSections((prev) => [...prev, emptySection()])}
+                    onClick={() => setSections((prev) => [...prev, newSection()])}
                     className="w-full rounded-lg border border-dashed border-slate-300 px-2 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                   >
                     + Adicionar secao

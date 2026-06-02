@@ -32,17 +32,17 @@ type BatchInsert = {
     error: { message: string } | null;
   }>;
 };
-type SimpleMutate = {
-  update(values: Record<string, unknown>): {
-    eq(col: string, val: string): {
-      select(): {
-        maybeSingle(): Promise<{
-          data: Record<string, unknown> | null;
-          error: { message: string } | null;
-        }>;
-      };
-    };
+type EqChain = {
+  eq(col: string, val: string): EqChain;
+  select(): {
+    maybeSingle(): Promise<{
+      data: Record<string, unknown> | null;
+      error: { message: string } | null;
+    }>;
   };
+};
+type SimpleMutate = {
+  update(values: Record<string, unknown>): EqChain;
   delete(): {
     eq(col: string, val: string): Promise<{ error: { message: string } | null }>;
   };
@@ -173,15 +173,28 @@ export async function createChecklist(input: {
   const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
   if (!ctx.ok) return ctx;
 
-  const { data: maxData } = await supabase
-    .from("checklists")
-    .select("order_index")
-    .eq("project_id", ctx.project.id)
-    .order("order_index", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // order_index num espaco compartilhado com flows (board unico) — nasce no fim.
+  const [{ data: maxCl }, { data: maxFlow }] = await Promise.all([
+    supabase
+      .from("checklists")
+      .select("order_index")
+      .eq("project_id", ctx.project.id)
+      .order("order_index", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("flows")
+      .select("order_index")
+      .eq("project_id", ctx.project.id)
+      .order("order_index", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   const nextOrder =
-    ((maxData as unknown as { order_index?: number } | null)?.order_index ?? -1) + 1;
+    Math.max(
+      (maxCl as unknown as { order_index?: number } | null)?.order_index ?? -1,
+      (maxFlow as unknown as { order_index?: number } | null)?.order_index ?? -1,
+    ) + 1;
 
   const { data: clData, error: clErr } = await (
     supabase.from("checklists") as unknown as SingleInsert
@@ -199,6 +212,13 @@ export async function createChecklist(input: {
   if (!clData) return { ok: false, error: "Sem permissao" };
   const checklist = clData as unknown as ChecklistRow;
 
+  // rollback best-effort: cascade limpa secoes/itens, evita checklist parcial
+  const rollback = async () => {
+    await (supabase.from("checklists") as unknown as SimpleMutate)
+      .delete()
+      .eq("id", checklist.id);
+  };
+
   for (let i = 0; i < sections.length; i++) {
     const sec = sections[i]!;
     const { data: secData, error: secErr } = await (
@@ -212,8 +232,14 @@ export async function createChecklist(input: {
       })
       .select()
       .maybeSingle();
-    if (secErr) return { ok: false, error: `Secao "${sec.title}": ${secErr.message}` };
-    if (!secData) return { ok: false, error: "Sem permissao" };
+    if (secErr) {
+      await rollback();
+      return { ok: false, error: `Secao "${sec.title}": ${secErr.message}` };
+    }
+    if (!secData) {
+      await rollback();
+      return { ok: false, error: "Sem permissao" };
+    }
     const section = secData as unknown as ChecklistSectionRow;
 
     if (sec.items.length) {
@@ -227,9 +253,10 @@ export async function createChecklist(input: {
         supabase.from("checklist_items") as unknown as BatchInsert
       ).insert(rows);
       if (itemsErr) {
+        await rollback();
         return {
           ok: false,
-          error: `Checklist criada, mas falhou ao adicionar itens: ${itemsErr.message}`,
+          error: `Falhou ao adicionar itens: ${itemsErr.message}`,
         };
       }
     }
@@ -261,16 +288,23 @@ export async function reorderBoard(input: {
   projectId: string;
   items: { type: "flow" | "checklist"; id: string }[];
 }): Promise<ActionResult> {
-  const { supabase } = await getDb();
+  const { supabase, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
   const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
   if (!ctx.ok) return ctx;
+  // garante que o projeto pertence a diretoria da URL (evita atuar fora do contexto)
+  if (ctx.project.directory_id !== ctx.directory.id) {
+    return { ok: false, error: "Projeto nao pertence a diretoria" };
+  }
 
   for (let i = 0; i < input.items.length; i++) {
     const it = input.items[i]!;
     const table = it.type === "flow" ? "flows" : "checklists";
+    // restringe ao project_id: id de outro projeto nao e afetado
     const { error } = await (supabase.from(table) as unknown as SimpleMutate)
       .update({ order_index: i })
       .eq("id", it.id)
+      .eq("project_id", ctx.project.id)
       .select()
       .maybeSingle();
     if (error) return { ok: false, error: `Reorder ${it.id}: ${error.message}` };

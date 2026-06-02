@@ -100,16 +100,12 @@ async function runJob(req: Request) {
 
   for (const r of reminders) {
     const due = new Date(r.due_date);
-    let shouldFire = false;
-    let patch: Record<string, unknown> = {};
 
+    // 1) elegibilidade por horario (BR)
+    let eligible = false;
     if (r.recurrence === "once") {
-      if (!r.notified_at && now.getTime() >= due.getTime()) {
-        shouldFire = true;
-        patch = { notified_at: now.toISOString() };
-      }
+      eligible = !r.notified_at && now.getTime() >= due.getTime();
     } else {
-      // daily: horario de hoje em BR usando a hora/min do due_date
       const p = getBRParts(due);
       const fireAt = atBR(
         Number(todayBR.slice(0, 4)),
@@ -118,16 +114,34 @@ async function runJob(req: Request) {
         p.h,
         p.mi,
       );
-      if (
-        now.getTime() >= fireAt.getTime() &&
-        r.last_notified_on !== todayBR
-      ) {
-        shouldFire = true;
-        patch = { last_notified_on: todayBR };
-      }
+      eligible = now.getTime() >= fireAt.getTime() && r.last_notified_on !== todayBR;
+    }
+    if (!eligible) {
+      skipped++;
+      continue;
     }
 
-    if (!shouldFire) {
+    // 2) lock idempotente: marca o disparo ANTES de notificar, condicional ao
+    //    estado nao-disparado. So prossegue quem ganhou o update (1 linha) —
+    //    evita duplicar push/email se 2 runs do cron rodarem em paralelo.
+    const lockQuery =
+      r.recurrence === "once"
+        ? supa
+            .from("reminders")
+            .update({ notified_at: now.toISOString() })
+            .eq("id", r.id)
+            .is("notified_at", null)
+        : supa
+            .from("reminders")
+            .update({ last_notified_on: todayBR })
+            .eq("id", r.id)
+            .or(`last_notified_on.is.null,last_notified_on.neq.${todayBR}`);
+    const { data: locked, error: lockErr } = await lockQuery.select("id");
+    if (lockErr) {
+      errors.push(`lock ${r.id}: ${lockErr.message}`);
+      continue;
+    }
+    if (!locked || (locked as unknown[]).length === 0) {
       skipped++;
       continue;
     }
@@ -141,7 +155,7 @@ async function runJob(req: Request) {
     const body =
       (r.description ? `${r.description} · ` : "") +
       `Projeto: ${r.project.name}` +
-      (r.recurrence === "daily" ? " (diario)" : "");
+      (r.recurrence === "daily" ? " (diário)" : "");
 
     const uid = r.created_by;
     const { error: nErr } = await supa.from("notifications").insert({
@@ -155,13 +169,15 @@ async function runJob(req: Request) {
       link,
     });
     if (nErr) {
+      // desfaz o marker pra permitir retry no proximo run
+      const revert =
+        r.recurrence === "once"
+          ? { notified_at: null }
+          : { last_notified_on: r.last_notified_on };
+      await supa.from("reminders").update(revert).eq("id", r.id);
       errors.push(`${r.id}: ${nErr.message}`);
       continue;
     }
-
-    // marca como disparado (idempotencia) antes dos canais externos
-    const { error: uErr } = await supa.from("reminders").update(patch).eq("id", r.id);
-    if (uErr) errors.push(`update ${r.id}: ${uErr.message}`);
 
     const absoluteLink = link ? `${APP_URL}${link}` : "/app";
     const payload = { title, body, url: absoluteLink, tag: `reminder-${r.id}` };
