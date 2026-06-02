@@ -16,6 +16,11 @@ import type {
   ChecklistSectionRow,
 } from "@/lib/types";
 
+type DragHandle = {
+  attributes?: Record<string, unknown>;
+  listeners?: Record<string, unknown>;
+};
+
 interface Props {
   checklist: ChecklistRow;
   sections: ChecklistSectionRow[];
@@ -24,6 +29,10 @@ interface Props {
   directorySlug: string;
   projectId: string;
   canEdit: boolean;
+  canReorder?: boolean;
+  dragRef?: (el: HTMLElement | null) => void;
+  dragStyle?: React.CSSProperties;
+  dragHandle?: DragHandle;
 }
 
 export function ChecklistColumn({
@@ -34,6 +43,10 @@ export function ChecklistColumn({
   directorySlug,
   projectId,
   canEdit,
+  canReorder = false,
+  dragRef,
+  dragStyle,
+  dragHandle,
 }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -83,8 +96,18 @@ export function ChecklistColumn({
   }
 
   return (
-    <div className="flex w-80 shrink-0 flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-      <div className="flex items-start justify-between gap-2">
+    <div
+      ref={dragRef}
+      style={dragStyle}
+      className="flex w-80 shrink-0 flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+    >
+      <div
+        className={`flex items-start justify-between gap-2 rounded-xl ${
+          canReorder ? "cursor-grab active:cursor-grabbing" : ""
+        }`}
+        {...(canReorder && dragHandle?.attributes ? dragHandle.attributes : {})}
+        {...(canReorder && dragHandle?.listeners ? dragHandle.listeners : {})}
+      >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-slate-900">
@@ -102,6 +125,7 @@ export function ChecklistColumn({
           <button
             type="button"
             onClick={removeChecklist}
+            onPointerDown={(e) => e.stopPropagation()}
             disabled={pending}
             aria-label="Excluir checklist"
             className="shrink-0 text-[10px] text-red-500 hover:text-red-700 disabled:opacity-50"
