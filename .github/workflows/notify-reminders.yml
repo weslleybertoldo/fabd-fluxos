@@ -1,0 +1,25 @@
+name: Notify reminders
+
+# Dispara lembretes (reminders): "once" 1x no horario, "daily" todo dia no
+# horario. GH Actions a cada 10min; o endpoint dedupa via notified_at /
+# last_notified_on, entao rodar repetido nao duplica.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/notify-reminders
+        run: |
+          set -e
+          RES=$(curl -fsS -w "\n%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://fluxos.fabd.com.br/api/cron/notify-reminders")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE | $BODY"
+          [ "$CODE" = "200" ] || (echo "ERRO" && exit 1)

@@ -169,6 +169,8 @@ export type PhaseFieldValueRow = {
   updated_at: string;
 };
 
+export type ReminderRecurrence = "once" | "daily";
+
 export type ReminderRow = {
   id: string;
   project_id: string;
@@ -176,6 +178,9 @@ export type ReminderRow = {
   description: string | null;
   due_date: string | null;
   completed_at: string | null;
+  recurrence: ReminderRecurrence;
+  notified_at: string | null;
+  last_notified_on: string | null;
   order_index: number;
   created_by: string;
   created_at: string;

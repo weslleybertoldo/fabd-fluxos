@@ -116,6 +116,7 @@ export async function createReminder(input: {
   name: string;
   description?: string | null;
   dueDate?: string | null;
+  recurrence?: "once" | "daily";
 }): Promise<ActionResult<{ reminderId: string }>> {
   const { sb, userId, supabase } = await getDb();
   if (!userId) return { ok: false, error: "Nao autenticado" };
@@ -123,6 +124,14 @@ export async function createReminder(input: {
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Nome obrigatorio" };
   if (name.length > 200) return { ok: false, error: "Nome muito longo" };
+
+  const recurrence = input.recurrence === "daily" ? "daily" : "once";
+  if (!input.dueDate) {
+    return {
+      ok: false,
+      error: recurrence === "daily" ? "Informe o horario" : "Informe a data/hora",
+    };
+  }
 
   const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
   if (!ctx.ok) return ctx;
@@ -144,6 +153,7 @@ export async function createReminder(input: {
       name,
       description: input.description?.trim() || null,
       due_date: input.dueDate || null,
+      recurrence,
       order_index: nextOrder,
       created_by: userId,
     })
