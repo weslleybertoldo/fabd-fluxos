@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addListItem, createList } from "@/lib/actions/lists";
+import { createChecklist } from "@/lib/actions/lists";
 
 interface Props {
   workspaceSlug: string;
@@ -31,32 +31,17 @@ export function CreateChecklistButton({
       .slice(0, 100);
 
     start(async () => {
-      const created = await createList({
+      const created = await createChecklist({
         workspaceSlug,
         directorySlug,
         projectId,
         name,
+        items,
       });
       if (!created.ok) {
+        // Mantem o modal aberto exibindo o erro (nao perde o que o user digitou).
         setError(created.error);
         return;
-      }
-
-      const listId = created.data?.listId;
-      if (listId) {
-        for (const text of items) {
-          const r = await addListItem({
-            workspaceSlug,
-            directorySlug,
-            projectId,
-            listId,
-            text,
-          });
-          if (!r.ok) {
-            setError(`Checklist criada, mas falhou ao adicionar "${text}": ${r.error}`);
-            break;
-          }
-        }
       }
 
       setOpen(false);
