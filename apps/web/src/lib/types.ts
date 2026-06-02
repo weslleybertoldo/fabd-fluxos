@@ -182,19 +182,32 @@ export type ReminderRow = {
   updated_at: string;
 };
 
-export type SimpleListRow = {
+export type ChecklistKind = "flow" | "simple";
+
+export type ChecklistRow = {
   id: string;
   project_id: string;
   name: string;
+  kind: ChecklistKind;
   order_index: number;
   created_by: string;
   created_at: string;
   updated_at: string;
 };
 
-export type SimpleListItemRow = {
+export type ChecklistSectionRow = {
   id: string;
-  list_id: string;
+  checklist_id: string;
+  title: string;
+  description: string | null;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChecklistItemRow = {
+  id: string;
+  section_id: string;
   text: string;
   completed_at: string | null;
   order_index: number;

@@ -21,8 +21,9 @@ import type {
   PhaseRow,
   ProjectRow,
   ReminderRow,
-  SimpleListItemRow,
-  SimpleListRow,
+  ChecklistRow,
+  ChecklistSectionRow,
+  ChecklistItemRow,
   WorkspaceMemberRow,
 } from "@/lib/types";
 
@@ -108,8 +109,8 @@ export default async function ProjectPage({
       ? flowStatusParam
       : "active";
 
-  // Onda 3 (paralelo): flows + reminders + lists — todas dependem so de project.id
-  const [flowsRes, remindersRes, listsRes] = await Promise.all([
+  // Onda 3 (paralelo): flows + reminders + checklists — todas dependem so de project.id
+  const [flowsRes, remindersRes, checklistsRes] = await Promise.all([
     supabase
       .from("flows")
       .select("*")
@@ -125,19 +126,20 @@ export default async function ProjectPage({
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false }),
     supabase
-      .from("simple_lists")
+      .from("checklists")
       .select("*")
       .eq("project_id", project.id)
-      .order("order_index", { ascending: true }),
+      .order("order_index", { ascending: true })
+      .order("created_at", { ascending: false }),
   ]);
   const flows = (flowsRes.data ?? []) as unknown as FlowRow[];
   const reminders = (remindersRes.data ?? []) as unknown as ReminderRow[];
-  const lists = (listsRes.data ?? []) as unknown as SimpleListRow[];
+  const checklists = (checklistsRes.data ?? []) as unknown as ChecklistRow[];
 
-  // Onda 4 (paralelo): phases (flowIds) + items (listIds) — independentes entre si
+  // Onda 4 (paralelo): phases (flowIds) + checklist_sections (checklistIds)
   const flowIds = flows.map((f) => f.id);
-  const listIds = lists.map((l) => l.id);
-  const [phasesRes, itemsRes] = await Promise.all([
+  const checklistIds = checklists.map((c) => c.id);
+  const [phasesRes, sectionsRes] = await Promise.all([
     flowIds.length
       ? supabase
           .from("phases")
@@ -145,20 +147,35 @@ export default async function ProjectPage({
           .in("flow_id", flowIds)
           .order("order_index", { ascending: true })
       : Promise.resolve({ data: [] }),
-    listIds.length
+    checklistIds.length
       ? supabase
-          .from("simple_list_items")
+          .from("checklist_sections")
           .select("*")
-          .in("list_id", listIds)
+          .in("checklist_id", checklistIds)
           .order("order_index", { ascending: true })
       : Promise.resolve({ data: [] }),
   ]);
   const allPhases = (phasesRes.data ?? []) as unknown as PhaseRow[];
-  const items = (itemsRes.data ?? []) as unknown as SimpleListItemRow[];
-  const itemsByList: Record<string, SimpleListItemRow[]> = {};
-  for (const it of items) {
-    if (!itemsByList[it.list_id]) itemsByList[it.list_id] = [];
-    itemsByList[it.list_id]!.push(it);
+  const sections = (sectionsRes.data ?? []) as unknown as ChecklistSectionRow[];
+
+  // Onda 4.1: checklist_items (sectionIds)
+  const sectionIds = sections.map((s) => s.id);
+  const itemsRes = sectionIds.length
+    ? await supabase
+        .from("checklist_items")
+        .select("*")
+        .in("section_id", sectionIds)
+        .order("order_index", { ascending: true })
+    : { data: [] };
+  const checklistItems = (itemsRes.data ?? []) as unknown as ChecklistItemRow[];
+
+  const sectionsByChecklist: Record<string, ChecklistSectionRow[]> = {};
+  for (const s of sections) {
+    (sectionsByChecklist[s.checklist_id] ??= []).push(s);
+  }
+  const itemsBySection: Record<string, ChecklistItemRow[]> = {};
+  for (const it of checklistItems) {
+    (itemsBySection[it.section_id] ??= []).push(it);
   }
 
   // Bulk loads pra alimentar o PhaseDetailModal (clique em mini-fase do board)
@@ -272,10 +289,11 @@ export default async function ProjectPage({
           { table: "projects", filter: `id=eq.${project.id}` },
           { table: "flows", filter: `project_id=eq.${project.id}` },
           { table: "reminders", filter: `project_id=eq.${project.id}` },
-          { table: "simple_lists", filter: `project_id=eq.${project.id}` },
-          // phases/items sem coluna project_id direta — RLS filtra
+          { table: "checklists", filter: `project_id=eq.${project.id}` },
+          // phases/sections/items sem coluna project_id direta — RLS filtra
           { table: "phases" },
-          { table: "simple_list_items" },
+          { table: "checklist_sections" },
+          { table: "checklist_items" },
         ]}
       />
       <header className="space-y-3">
@@ -433,7 +451,7 @@ export default async function ProjectPage({
           })}
         </nav>
 
-        {flows.length === 0 ? (
+        {flows.length === 0 && checklists.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
             <p className="font-medium text-slate-700">
               {flowStatus === "active"
@@ -446,12 +464,13 @@ export default async function ProjectPage({
               {!canCreateFlow && flowStatus === "active"
                 ? "Aguardando admin ou diretor criar o primeiro fluxo."
                 : flowStatus === "active"
-                  ? "Use o botao 'Criar fluxo' acima pra comecar."
+                  ? "Use os botoes 'Criar fluxo' ou 'Criar checklist' acima pra comecar."
                   : null}
             </p>
           </div>
         ) : (
           <FlowsBoard
+            id="listas"
             workspaceSlug={ctx.workspace.slug}
             directorySlug={directory.slug}
             projectId={project.id}
@@ -467,12 +486,18 @@ export default async function ProjectPage({
             commentsByPhase={commentsByPhase}
             responsiblesByPhase={responsiblesByPhase}
             members={allMembers}
+            checklists={checklists}
+            sectionsByChecklist={sectionsByChecklist}
+            itemsBySection={itemsBySection}
+            canEditChecklist={
+              project.status === "active" &&
+              (ctx.member.role === "admin" || ctx.member.role === "diretor")
+            }
           />
         )}
       </section>
 
       <RemindersAndLists
-        id="listas"
         workspaceSlug={ctx.workspace.slug}
         directorySlug={directory.slug}
         projectId={project.id}
@@ -481,8 +506,6 @@ export default async function ProjectPage({
           (ctx.member.role === "admin" || ctx.member.role === "diretor")
         }
         reminders={reminders}
-        lists={lists}
-        itemsByList={itemsByList}
       />
     </div>
   );

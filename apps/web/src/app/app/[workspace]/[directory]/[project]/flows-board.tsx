@@ -22,7 +22,11 @@ import { reorderFlows } from "@/lib/actions/flows";
 import { createPhase, setPhaseCompleted } from "@/lib/actions/phases";
 import { PhaseDetailModal } from "./[flow]/phase-detail-modal";
 import { PhaseModal } from "./[flow]/phase-edit-modals";
+import { ChecklistColumn } from "./checklist-column";
 import type {
+  ChecklistItemRow,
+  ChecklistRow,
+  ChecklistSectionRow,
   FlowCommentRow,
   FlowRow,
   PhaseAttachmentRow,
@@ -38,6 +42,7 @@ type MemberLite = Pick<
 >;
 
 interface Props {
+  id?: string;
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
@@ -53,9 +58,14 @@ interface Props {
   commentsByPhase: Record<string, FlowCommentRow[]>;
   responsiblesByPhase: Record<string, string[]>;
   members: MemberLite[];
+  checklists?: ChecklistRow[];
+  sectionsByChecklist?: Record<string, ChecklistSectionRow[]>;
+  itemsBySection?: Record<string, ChecklistItemRow[]>;
+  canEditChecklist?: boolean;
 }
 
 export function FlowsBoard({
+  id,
   workspaceSlug,
   directorySlug,
   projectId,
@@ -71,6 +81,10 @@ export function FlowsBoard({
   commentsByPhase,
   responsiblesByPhase,
   members,
+  checklists = [],
+  sectionsByChecklist = {},
+  itemsBySection = {},
+  canEditChecklist = false,
 }: Props) {
   const router = useRouter();
   const [flows, setFlows] = useState<FlowRow[]>(initialFlows);
@@ -182,7 +196,7 @@ export function FlowsBoard({
   }
 
   return (
-    <div className="space-y-3">
+    <div id={id} className="space-y-3 scroll-mt-4">
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
@@ -198,11 +212,11 @@ export function FlowsBoard({
         collisionDetection={closestCenter}
         onDragEnd={canReorder ? handleDragEnd : undefined}
       >
-        <SortableContext
-          items={flows.map((f) => f.id)}
-          strategy={horizontalListSortingStrategy}
-        >
-          <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-3">
+        <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-3">
+          <SortableContext
+            items={flows.map((f) => f.id)}
+            strategy={horizontalListSortingStrategy}
+          >
             {flows.map((flow) => (
               <SortableFlowColumn
                 key={flow.id}
@@ -220,8 +234,21 @@ export function FlowsBoard({
                 onAddPhase={() => setCreatingFor(flow)}
               />
             ))}
-          </div>
-        </SortableContext>
+          </SortableContext>
+
+          {checklists.map((cl) => (
+            <ChecklistColumn
+              key={cl.id}
+              checklist={cl}
+              sections={sectionsByChecklist[cl.id] ?? []}
+              itemsBySection={itemsBySection}
+              workspaceSlug={workspaceSlug}
+              directorySlug={directorySlug}
+              projectId={projectId}
+              canEdit={canEditChecklist}
+            />
+          ))}
+        </div>
       </DndContext>
 
       {openDetail ? (
