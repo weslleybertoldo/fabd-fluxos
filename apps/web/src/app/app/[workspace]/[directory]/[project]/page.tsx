@@ -6,6 +6,7 @@ import { getVisibleDirectoryIds } from "@/lib/visibility";
 import { MemberAvatar } from "@/components/member-avatar";
 import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
+import { CreateChecklistButton } from "./create-checklist-button";
 import { FlowsBoard } from "./flows-board";
 import { RemindersAndLists } from "./reminders-and-lists";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
@@ -394,11 +395,18 @@ export default async function ProjectPage({
               </Link>
             ) : null}
             {canCreateFlow ? (
-              <CreateFlowButton
-                workspaceSlug={ctx.workspace.slug}
-                directorySlug={directory.slug}
-                projectId={project.id}
-              />
+              <>
+                <CreateChecklistButton
+                  workspaceSlug={ctx.workspace.slug}
+                  directorySlug={directory.slug}
+                  projectId={project.id}
+                />
+                <CreateFlowButton
+                  workspaceSlug={ctx.workspace.slug}
+                  directorySlug={directory.slug}
+                  projectId={project.id}
+                />
+              </>
             ) : null}
           </div>
         </div>
@@ -464,6 +472,7 @@ export default async function ProjectPage({
       </section>
 
       <RemindersAndLists
+        id="listas"
         workspaceSlug={ctx.workspace.slug}
         directorySlug={directory.slug}
         projectId={project.id}

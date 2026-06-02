@@ -17,6 +17,7 @@ import {
 import type { ReminderRow, SimpleListItemRow, SimpleListRow } from "@/lib/types";
 
 interface Props {
+  id?: string;
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export function RemindersAndLists({
+  id,
   workspaceSlug,
   directorySlug,
   projectId,
@@ -36,7 +38,7 @@ export function RemindersAndLists({
   itemsByList,
 }: Props) {
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div id={id} className="grid scroll-mt-4 gap-4 lg:grid-cols-2">
       <RemindersBox
         workspaceSlug={workspaceSlug}
         directorySlug={directorySlug}
