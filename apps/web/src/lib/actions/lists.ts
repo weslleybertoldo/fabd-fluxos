@@ -165,6 +165,97 @@ export async function createList(input: {
   return { ok: true, data: { listId: list.id } };
 }
 
+/**
+ * Cria uma lista e, opcionalmente, seus itens iniciais num unico insert em
+ * batch — evita o N+1 de chamar addListItem em serie (cada chamada faz
+ * roundtrip + revalidatePath). Revalida uma unica vez no fim.
+ */
+export async function createChecklist(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  name: string;
+  items?: string[];
+}): Promise<ActionResult<{ listId: string }>> {
+  const { sb, supabase, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Nome obrigatorio" };
+  if (name.length > 200) return { ok: false, error: "Nome muito longo" };
+
+  const items = (input.items ?? [])
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 100);
+  if (items.some((t) => t.length > 1000)) {
+    return { ok: false, error: "Item muito longo (max 1000 caracteres)" };
+  }
+
+  const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
+  if (!ctx.ok) return ctx;
+
+  const { data: maxData } = await supabase
+    .from("simple_lists")
+    .select("order_index")
+    .eq("project_id", ctx.project.id)
+    .order("order_index", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextOrder =
+    ((maxData as unknown as { order_index?: number } | null)?.order_index ?? -1) + 1;
+
+  const { data, error } = await sb
+    .from("simple_lists")
+    .insert({
+      project_id: ctx.project.id,
+      name,
+      order_index: nextOrder,
+      created_by: userId,
+    })
+    .select()
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Sem permissao" };
+
+  const list = data as unknown as SimpleListRow;
+
+  if (items.length) {
+    const rows = items.map((text, i) => ({
+      list_id: list.id,
+      text,
+      order_index: i,
+      created_by: userId,
+    }));
+    const batch = supabase.from("simple_list_items") as unknown as {
+      insert(v: Record<string, unknown>[]): Promise<{
+        error: { message: string } | null;
+      }>;
+    };
+    const { error: itemsErr } = await batch.insert(rows);
+    if (itemsErr) {
+      return {
+        ok: false,
+        error: `Checklist criada, mas falhou ao adicionar itens: ${itemsErr.message}`,
+      };
+    }
+  }
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "list_item",
+    entityId: list.id,
+    action: "create",
+    changes: { after: { name: list.name, kind: "list", items: items.length } },
+    context: ctxAudit(ctx),
+  });
+
+  revalidatePath(
+    `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}`,
+  );
+  return { ok: true, data: { listId: list.id } };
+}
+
 export async function deleteList(input: {
   workspaceSlug: string;
   directorySlug: string;
