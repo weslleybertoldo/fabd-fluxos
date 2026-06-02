@@ -386,8 +386,13 @@ function getBRParts(date: Date): {
 
 /**
  * Constroi um Date que representa "ano-mes-dia HH:MM em BR".
- * Aceita day=0 ou day=32: JS rola pro mes anterior/seguinte automaticamente
- * via `new Date(iso)`.
+ * Aceita day=0 ou day=32 (e hour fora de 0-23): `Date.UTC` rola pro
+ * mes/dia anterior/seguinte automaticamente.
+ *
+ * Brasil = UTC-3 fixo. Convertemos o horario BR pra UTC somando 3h
+ * (BR 09:00 == UTC 12:00). Usamos `Date.UTC` em vez de string ISO porque
+ * `new Date("2026-07-00T09:00-03:00")` retorna Invalid Date — a string
+ * ISO NAO faz rollover de campos fora do range, so o construtor numerico.
  */
 function atBR(
   year: number,
@@ -396,11 +401,7 @@ function atBR(
   hour: number,
   minute: number,
 ): Date {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  // Brasil = UTC-3 fixo. ISO com offset garante interpretacao correta
-  // mesmo se o servidor estiver em outra TZ.
-  const iso = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:00-03:00`;
-  return new Date(iso);
+  return new Date(Date.UTC(year, month - 1, day, hour + 3, minute, 0));
 }
 
 function brYMD(date: Date): string {
