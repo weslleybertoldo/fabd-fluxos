@@ -18,7 +18,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { reorderFlows } from "@/lib/actions/flows";
+import { reorderBoard } from "@/lib/actions/checklists";
 import { createPhase, setPhaseCompleted } from "@/lib/actions/phases";
 import { PhaseDetailModal } from "./[flow]/phase-detail-modal";
 import { PhaseModal } from "./[flow]/phase-edit-modals";
@@ -40,6 +40,48 @@ type MemberLite = Pick<
   WorkspaceMemberRow,
   "user_id" | "google_full_name" | "google_avatar_url"
 >;
+
+type BoardItem =
+  | { kind: "flow"; id: string; orderIndex: number; createdAt: string; flow: FlowRow }
+  | {
+      kind: "checklist";
+      id: string;
+      orderIndex: number;
+      createdAt: string;
+      checklist: ChecklistRow;
+    };
+
+const boardDndId = (it: BoardItem) => `${it.kind}:${it.id}`;
+
+// Ordena fluxos + checklists num espaco compartilhado de order_index.
+// Desempate: na 1a vez (order_index ainda separado por tabela) fluxos vem antes
+// das checklists; apos um reorder, order_index e unico e a ordem do user manda.
+function buildBoardItems(flows: FlowRow[], checklists: ChecklistRow[]): BoardItem[] {
+  const items: BoardItem[] = [
+    ...flows.map((f) => ({
+      kind: "flow" as const,
+      id: f.id,
+      orderIndex: f.order_index,
+      createdAt: f.created_at,
+      flow: f,
+    })),
+    ...checklists.map((c) => ({
+      kind: "checklist" as const,
+      id: c.id,
+      orderIndex: c.order_index,
+      createdAt: c.created_at,
+      checklist: c,
+    })),
+  ];
+  const rank = (k: BoardItem["kind"]) => (k === "flow" ? 0 : 1);
+  items.sort(
+    (a, b) =>
+      a.orderIndex - b.orderIndex ||
+      rank(a.kind) - rank(b.kind) ||
+      a.createdAt.localeCompare(b.createdAt),
+  );
+  return items;
+}
 
 interface Props {
   id?: string;
@@ -87,7 +129,9 @@ export function FlowsBoard({
   canEditChecklist = false,
 }: Props) {
   const router = useRouter();
-  const [flows, setFlows] = useState<FlowRow[]>(initialFlows);
+  const [items, setItems] = useState<BoardItem[]>(() =>
+    buildBoardItems(initialFlows, checklists),
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [openDetail, setOpenDetail] = useState<{ phase: PhaseRow; flow: FlowRow } | null>(null);
@@ -97,8 +141,8 @@ export function FlowsBoard({
   const authorsMap = Object.fromEntries(members.map((m) => [m.user_id, m]));
 
   useEffect(() => {
-    setFlows(initialFlows);
-  }, [initialFlows]);
+    setItems(buildBoardItems(initialFlows, checklists));
+  }, [initialFlows, checklists]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -121,28 +165,27 @@ export function FlowsBoard({
     return responsiblesByPhase[phase.id]?.includes(currentUserId) ?? false;
   }
 
-  // Pra reordenar fluxos: admin pode tudo; diretor so pode se for criador de TODOS
-  // (caso raro). Simplificacao: so admin reordena fluxos do projeto.
+  // Pra reordenar o board (fluxos + checklists): so admin. Diretor nao reordena.
   const canReorder = isAdmin;
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = flows.findIndex((f) => f.id === active.id);
-    const newIndex = flows.findIndex((f) => f.id === over.id);
+    const oldIndex = items.findIndex((it) => boardDndId(it) === active.id);
+    const newIndex = items.findIndex((it) => boardDndId(it) === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-    const reordered = arrayMove(flows, oldIndex, newIndex);
-    setFlows(reordered);
+    const reordered = arrayMove(items, oldIndex, newIndex);
+    setItems(reordered);
     start(async () => {
-      const r = await reorderFlows({
+      const r = await reorderBoard({
         workspaceSlug,
         directorySlug,
         projectId,
-        flowIds: reordered.map((f) => f.id),
+        items: reordered.map((it) => ({ type: it.kind, id: it.id })),
       });
       if (!r.ok) {
         setError(r.error);
-        setFlows(initialFlows);
+        setItems(buildBoardItems(initialFlows, checklists));
         return;
       }
       router.refresh();
@@ -203,7 +246,7 @@ export function FlowsBoard({
 
       {canReorder ? (
         <p className="text-xs text-slate-500">
-          Arraste pelo cabecalho de cada coluna pra reordenar os fluxos.
+          Arraste pelo cabecalho de cada coluna pra reordenar fluxos e checklists.
         </p>
       ) : null}
 
@@ -214,40 +257,41 @@ export function FlowsBoard({
       >
         <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-3">
           <SortableContext
-            items={flows.map((f) => f.id)}
+            items={items.map(boardDndId)}
             strategy={horizontalListSortingStrategy}
           >
-            {flows.map((flow) => (
-              <SortableFlowColumn
-                key={flow.id}
-                flow={flow}
-                phases={phasesByFlow[flow.id] ?? []}
-                workspaceSlug={workspaceSlug}
-                directorySlug={directorySlug}
-                projectId={projectId}
-                canEdit={canEditFlow(flow)}
-                canTogglePhase={(p) => canEditPhase(flow, p)}
-                canReorder={canReorder}
-                pending={pending}
-                onTogglePhase={(p) => togglePhase(flow, p)}
-                onOpenPhase={(p) => setOpenDetail({ phase: p, flow })}
-                onAddPhase={() => setCreatingFor(flow)}
-              />
-            ))}
+            {items.map((it) =>
+              it.kind === "flow" ? (
+                <SortableFlowColumn
+                  key={`flow:${it.id}`}
+                  flow={it.flow}
+                  phases={phasesByFlow[it.id] ?? []}
+                  workspaceSlug={workspaceSlug}
+                  directorySlug={directorySlug}
+                  projectId={projectId}
+                  canEdit={canEditFlow(it.flow)}
+                  canTogglePhase={(p) => canEditPhase(it.flow, p)}
+                  canReorder={canReorder}
+                  pending={pending}
+                  onTogglePhase={(p) => togglePhase(it.flow, p)}
+                  onOpenPhase={(p) => setOpenDetail({ phase: p, flow: it.flow })}
+                  onAddPhase={() => setCreatingFor(it.flow)}
+                />
+              ) : (
+                <SortableChecklistColumn
+                  key={`checklist:${it.id}`}
+                  checklist={it.checklist}
+                  sections={sectionsByChecklist[it.id] ?? []}
+                  itemsBySection={itemsBySection}
+                  workspaceSlug={workspaceSlug}
+                  directorySlug={directorySlug}
+                  projectId={projectId}
+                  canEdit={canEditChecklist}
+                  canReorder={canReorder}
+                />
+              ),
+            )}
           </SortableContext>
-
-          {checklists.map((cl) => (
-            <ChecklistColumn
-              key={cl.id}
-              checklist={cl}
-              sections={sectionsByChecklist[cl.id] ?? []}
-              itemsBySection={itemsBySection}
-              workspaceSlug={workspaceSlug}
-              directorySlug={directorySlug}
-              projectId={projectId}
-              canEdit={canEditChecklist}
-            />
-          ))}
         </div>
       </DndContext>
 
@@ -293,6 +337,43 @@ export function FlowsBoard({
   );
 }
 
+function SortableChecklistColumn(props: {
+  checklist: ChecklistRow;
+  sections: ChecklistSectionRow[];
+  itemsBySection: Record<string, ChecklistItemRow[]>;
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  canEdit: boolean;
+  canReorder: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: `checklist:${props.checklist.id}`, disabled: !props.canReorder });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+  return (
+    <ChecklistColumn
+      checklist={props.checklist}
+      sections={props.sections}
+      itemsBySection={props.itemsBySection}
+      workspaceSlug={props.workspaceSlug}
+      directorySlug={props.directorySlug}
+      projectId={props.projectId}
+      canEdit={props.canEdit}
+      canReorder={props.canReorder}
+      dragRef={setNodeRef}
+      dragStyle={style}
+      dragHandle={{
+        attributes: attributes as unknown as Record<string, unknown>,
+        listeners: listeners as unknown as Record<string, unknown> | undefined,
+      }}
+    />
+  );
+}
+
 function SortableFlowColumn(props: {
   flow: FlowRow;
   phases: PhaseRow[];
@@ -308,7 +389,7 @@ function SortableFlowColumn(props: {
   onAddPhase: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: props.flow.id, disabled: !props.canReorder });
+    useSortable({ id: `flow:${props.flow.id}`, disabled: !props.canReorder });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,

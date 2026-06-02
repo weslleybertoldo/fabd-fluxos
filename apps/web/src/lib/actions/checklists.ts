@@ -250,6 +250,45 @@ export async function createChecklist(input: {
   return { ok: true, data: { checklistId: checklist.id } };
 }
 
+/**
+ * Reordena o board inteiro (fluxos + checklists na mesma ordem visual).
+ * Reescreve order_index sequencial (0..N-1) num espaco compartilhado entre as
+ * duas tabelas, na ordem recebida.
+ */
+export async function reorderBoard(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  items: { type: "flow" | "checklist"; id: string }[];
+}): Promise<ActionResult> {
+  const { supabase } = await getDb();
+  const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
+  if (!ctx.ok) return ctx;
+
+  for (let i = 0; i < input.items.length; i++) {
+    const it = input.items[i]!;
+    const table = it.type === "flow" ? "flows" : "checklists";
+    const { error } = await (supabase.from(table) as unknown as SimpleMutate)
+      .update({ order_index: i })
+      .eq("id", it.id)
+      .select()
+      .maybeSingle();
+    if (error) return { ok: false, error: `Reorder ${it.id}: ${error.message}` };
+  }
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "project",
+    entityId: ctx.project.id,
+    action: "reorder",
+    changes: { after: { board: input.items } },
+    context: ctxAudit(ctx),
+  });
+
+  revalidateProject(input.workspaceSlug, input.directorySlug, input.projectId);
+  return { ok: true, data: undefined };
+}
+
 export async function deleteChecklist(input: {
   workspaceSlug: string;
   directorySlug: string;
