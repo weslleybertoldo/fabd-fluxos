@@ -53,9 +53,10 @@ type BoardItem =
 
 const boardDndId = (it: BoardItem) => `${it.kind}:${it.id}`;
 
-// Ordena fluxos + checklists num espaco compartilhado de order_index.
-// Desempate: na 1a vez (order_index ainda separado por tabela) fluxos vem antes
-// das checklists; apos um reorder, order_index e unico e a ordem do user manda.
+// Ordena fluxos + checklists por order_index num espaco compartilhado (checklists
+// nascem no fim via max(flows,checklists)+1, e reorderBoard reescreve 0..N-1 nos
+// dois tipos). Desempate por tipo (flows antes) e depois createdAt cobre dados
+// legados que ainda nao passaram por um reorder.
 function buildBoardItems(flows: FlowRow[], checklists: ChecklistRow[]): BoardItem[] {
   const items: BoardItem[] = [
     ...flows.map((f) => ({
@@ -286,8 +287,12 @@ export function FlowsBoard({
                   workspaceSlug={workspaceSlug}
                   directorySlug={directorySlug}
                   projectId={projectId}
-                  canEdit={canEditChecklist}
+                  canEdit={
+                    canEditChecklist &&
+                    (isAdmin || it.checklist.created_by === currentUserId)
+                  }
                   canReorder={canReorder}
+                  pending={pending}
                 />
               ),
             )}
@@ -346,9 +351,13 @@ function SortableChecklistColumn(props: {
   projectId: string;
   canEdit: boolean;
   canReorder: boolean;
+  pending: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: `checklist:${props.checklist.id}`, disabled: !props.canReorder });
+    useSortable({
+      id: `checklist:${props.checklist.id}`,
+      disabled: !props.canReorder || props.pending,
+    });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -389,7 +398,7 @@ function SortableFlowColumn(props: {
   onAddPhase: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: `flow:${props.flow.id}`, disabled: !props.canReorder });
+    useSortable({ id: `flow:${props.flow.id}`, disabled: !props.canReorder || props.pending });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
