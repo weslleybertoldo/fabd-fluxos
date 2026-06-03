@@ -34,6 +34,7 @@ interface Props {
   dragRef?: (el: HTMLElement | null) => void;
   dragStyle?: React.CSSProperties;
   dragHandle?: DragHandle;
+  onUnstack?: () => void;
 }
 
 export function ChecklistColumn({
@@ -48,6 +49,7 @@ export function ChecklistColumn({
   dragRef,
   dragStyle,
   dragHandle,
+  onUnstack,
 }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function ChecklistColumn({
     <div
       ref={dragRef}
       style={dragStyle}
-      className="flex w-80 shrink-0 flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+      className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3"
     >
       <div
         className={`flex items-start justify-between gap-2 rounded-xl ${
@@ -122,18 +124,33 @@ export function ChecklistColumn({
             {doneItems}/{totalItems} itens
           </span>
         </div>
-        {canEdit ? (
-          <button
-            type="button"
-            onClick={removeChecklist}
-            onPointerDown={(e) => e.stopPropagation()}
-            disabled={pending}
-            aria-label="Excluir checklist"
-            className="shrink-0 text-[10px] text-red-500 hover:text-red-700 disabled:opacity-50"
-          >
-            ✕
-          </button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {onUnstack ? (
+            <button
+              type="button"
+              onClick={onUnstack}
+              onPointerDown={(e) => e.stopPropagation()}
+              disabled={pending}
+              title="Desempilhar (coluna propria)"
+              aria-label="Desempilhar"
+              className="text-[11px] text-slate-400 hover:text-slate-700 disabled:opacity-50"
+            >
+              ⤧
+            </button>
+          ) : null}
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={removeChecklist}
+              onPointerDown={(e) => e.stopPropagation()}
+              disabled={pending}
+              aria-label="Excluir checklist"
+              className="text-[10px] text-red-500 hover:text-red-700 disabled:opacity-50"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {error ? (
@@ -425,76 +442,111 @@ function SectionBlock({
               </div>
 
               {open ? (
-                <div className="mt-1 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                  <textarea
-                    value={pNote}
-                    onChange={(e) => setPNote(e.target.value)}
-                    rows={2}
-                    maxLength={2000}
-                    placeholder="Observacao..."
-                    disabled={!canEdit || pending}
-                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
-                  />
-                  <input
-                    type="text"
-                    value={pTags}
-                    onChange={(e) => setPTags(e.target.value)}
-                    disabled={!canEdit || pending}
-                    placeholder="Tags (ex.: Taskdex, urgente) — separadas por virgula"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
-                  />
-                  <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-[10px]">
-                    {(["none", "once", "daily"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setPMode(m)}
-                        disabled={!canEdit || pending}
-                        className={`flex-1 rounded-md px-1 py-1 font-medium transition ${
-                          pMode === m ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"
-                        }`}
-                      >
-                        {m === "none" ? "Sem lembrete" : m === "once" ? "Único" : "Recorrente"}
-                      </button>
-                    ))}
-                  </div>
-                  {pMode === "once" ? (
-                    <input
-                      type="datetime-local"
-                      value={pDate}
-                      onChange={(e) => setPDate(e.target.value)}
-                      disabled={!canEdit || pending}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
-                    />
-                  ) : pMode === "daily" ? (
-                    <input
-                      type="time"
-                      value={pTime}
-                      onChange={(e) => setPTime(e.target.value)}
-                      disabled={!canEdit || pending}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
-                    />
-                  ) : null}
-                  {canEdit ? (
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => savePanel(item)}
-                        disabled={pending}
-                        className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                      >
-                        {pending ? "..." : "Salvar"}
-                      </button>
+                <div
+                  className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 px-4 backdrop-blur-sm"
+                  role="dialog"
+                  aria-modal="true"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget && !pending) setPanelId(null);
+                  }}
+                >
+                  <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-xl">
+                    <header className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900">{item.text}</h3>
                       <button
                         type="button"
                         onClick={() => setPanelId(null)}
                         disabled={pending}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        aria-label="Fechar"
+                        className="text-slate-400 hover:text-slate-700"
+                      >
+                        ✕
+                      </button>
+                    </header>
+
+                    <label className="block space-y-1">
+                      <span className="text-xs font-medium text-slate-600">Observacao</span>
+                      <textarea
+                        value={pNote}
+                        onChange={(e) => setPNote(e.target.value)}
+                        rows={3}
+                        maxLength={2000}
+                        placeholder="Observacao..."
+                        disabled={!canEdit || pending}
+                        className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      />
+                    </label>
+
+                    <label className="block space-y-1">
+                      <span className="text-xs font-medium text-slate-600">Tags</span>
+                      <input
+                        type="text"
+                        value={pTags}
+                        onChange={(e) => setPTags(e.target.value)}
+                        disabled={!canEdit || pending}
+                        placeholder="Ex.: Taskdex, urgente — separadas por virgula"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      />
+                    </label>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-medium text-slate-600">Lembrete</span>
+                      <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
+                        {(["none", "once", "daily"] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setPMode(m)}
+                            disabled={!canEdit || pending}
+                            className={`flex-1 rounded-md px-2 py-1 font-medium transition ${
+                              pMode === m ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"
+                            }`}
+                          >
+                            {m === "none" ? "Sem lembrete" : m === "once" ? "Único" : "Recorrente"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {pMode === "once" ? (
+                      <input
+                        type="datetime-local"
+                        value={pDate}
+                        onChange={(e) => setPDate(e.target.value)}
+                        disabled={!canEdit || pending}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      />
+                    ) : pMode === "daily" ? (
+                      <input
+                        type="time"
+                        value={pTime}
+                        onChange={(e) => setPTime(e.target.value)}
+                        disabled={!canEdit || pending}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      />
+                    ) : null}
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setPanelId(null)}
+                        disabled={pending}
+                        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
                         Fechar
                       </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => savePanel(item)}
+                          disabled={pending}
+                          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          {pending ? "Salvando..." : "Salvar"}
+                        </button>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               ) : null}
             </li>

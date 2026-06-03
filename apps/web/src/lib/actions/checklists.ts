@@ -282,42 +282,52 @@ export async function createChecklist(input: {
  * Reescreve order_index sequencial (0..N-1) num espaco compartilhado entre as
  * duas tabelas, na ordem recebida.
  */
+type BoardColumn =
+  | { type: "flow"; id: string }
+  | { type: "stack"; checklistIds: string[] };
+
+/**
+ * Reordena o board (colunas horizontais). Cada coluna e um fluxo OU uma pilha de
+ * checklists empilhadas. order_index = posicao horizontal da coluna; pras pilhas,
+ * stack_id agrupa as checklists e stack_pos ordena verticalmente.
+ */
 export async function reorderBoard(input: {
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
-  items: { type: "flow" | "checklist"; id: string }[];
+  columns: BoardColumn[];
 }): Promise<ActionResult> {
   const { supabase, userId } = await getDb();
   if (!userId) return { ok: false, error: "Nao autenticado" };
   const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
   if (!ctx.ok) return ctx;
-  // garante que o projeto pertence a diretoria da URL (evita atuar fora do contexto)
   if (ctx.project.directory_id !== ctx.directory.id) {
     return { ok: false, error: "Projeto nao pertence a diretoria" };
   }
 
-  for (let i = 0; i < input.items.length; i++) {
-    const it = input.items[i]!;
-    const table = it.type === "flow" ? "flows" : "checklists";
-    // restringe ao project_id: id de outro projeto nao e afetado
-    const { error } = await (supabase.from(table) as unknown as SimpleMutate)
-      .update({ order_index: i })
-      .eq("id", it.id)
-      .eq("project_id", ctx.project.id)
-      .select()
-      .maybeSingle();
-    if (error) return { ok: false, error: `Reorder ${it.id}: ${error.message}` };
+  for (let i = 0; i < input.columns.length; i++) {
+    const col = input.columns[i]!;
+    if (col.type === "flow") {
+      const { error } = await (supabase.from("flows") as unknown as SimpleMutate)
+        .update({ order_index: i })
+        .eq("id", col.id)
+        .eq("project_id", ctx.project.id)
+        .select()
+        .maybeSingle();
+      if (error) return { ok: false, error: `Reorder ${col.id}: ${error.message}` };
+    } else {
+      const stackId = col.checklistIds[0];
+      for (let j = 0; j < col.checklistIds.length; j++) {
+        const { error } = await (supabase.from("checklists") as unknown as SimpleMutate)
+          .update({ order_index: i, stack_id: stackId, stack_pos: j })
+          .eq("id", col.checklistIds[j]!)
+          .eq("project_id", ctx.project.id)
+          .select()
+          .maybeSingle();
+        if (error) return { ok: false, error: `Reorder ${col.checklistIds[j]}: ${error.message}` };
+      }
+    }
   }
-
-  await audit({
-    workspaceId: ctx.workspace.id,
-    entity: "project",
-    entityId: ctx.project.id,
-    action: "reorder",
-    changes: { after: { board: input.items } },
-    context: ctxAudit(ctx),
-  });
 
   revalidateProject(input.workspaceSlug, input.directorySlug, input.projectId);
   return { ok: true, data: undefined };

@@ -41,47 +41,55 @@ type MemberLite = Pick<
   "user_id" | "google_full_name" | "google_avatar_url"
 >;
 
-type BoardItem =
-  | { kind: "flow"; id: string; orderIndex: number; createdAt: string; flow: FlowRow }
-  | {
-      kind: "checklist";
-      id: string;
-      orderIndex: number;
-      createdAt: string;
-      checklist: ChecklistRow;
-    };
+// Coluna do board: um fluxo OU uma pilha de checklists (mesma stack_id).
+type Column =
+  | { kind: "flow"; id: string; order: number; createdAt: string; flow: FlowRow }
+  | { kind: "stack"; id: string; order: number; createdAt: string; checklists: ChecklistRow[] };
 
-const boardDndId = (it: BoardItem) => `${it.kind}:${it.id}`;
+const colDndId = (c: Column) => `${c.kind}:${c.id}`;
 
-// Ordena fluxos + checklists por order_index num espaco compartilhado (checklists
-// nascem no fim via max(flows,checklists)+1, e reorderBoard reescreve 0..N-1 nos
-// dois tipos). Desempate por tipo (flows antes) e depois createdAt cobre dados
-// legados que ainda nao passaram por um reorder.
-function buildBoardItems(flows: FlowRow[], checklists: ChecklistRow[]): BoardItem[] {
-  const items: BoardItem[] = [
+// Agrupa checklists por stack_id (pilhas), ordena verticalmente por stack_pos, e
+// mistura com os fluxos numa ordem horizontal por order_index.
+function buildColumns(flows: FlowRow[], checklists: ChecklistRow[]): Column[] {
+  const groups = new Map<string, ChecklistRow[]>();
+  for (const c of checklists) {
+    const key = c.stack_id ?? c.id;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(c);
+  }
+  const cols: Column[] = [
     ...flows.map((f) => ({
       kind: "flow" as const,
       id: f.id,
-      orderIndex: f.order_index,
+      order: f.order_index,
       createdAt: f.created_at,
       flow: f,
     })),
-    ...checklists.map((c) => ({
-      kind: "checklist" as const,
-      id: c.id,
-      orderIndex: c.order_index,
-      createdAt: c.created_at,
-      checklist: c,
-    })),
+    ...Array.from(groups.entries()).map(([key, list]) => {
+      const sorted = [...list].sort(
+        (a, b) => a.stack_pos - b.stack_pos || a.created_at.localeCompare(b.created_at),
+      );
+      return {
+        kind: "stack" as const,
+        id: key,
+        order: Math.min(...sorted.map((c) => c.order_index)),
+        createdAt: sorted[0]!.created_at,
+        checklists: sorted,
+      };
+    }),
   ];
-  const rank = (k: BoardItem["kind"]) => (k === "flow" ? 0 : 1);
-  items.sort(
-    (a, b) =>
-      a.orderIndex - b.orderIndex ||
-      rank(a.kind) - rank(b.kind) ||
-      a.createdAt.localeCompare(b.createdAt),
+  const rank = (k: Column["kind"]) => (k === "flow" ? 0 : 1);
+  cols.sort(
+    (a, b) => a.order - b.order || rank(a.kind) - rank(b.kind) || a.createdAt.localeCompare(b.createdAt),
   );
-  return items;
+  return cols;
+}
+
+function columnsToPayload(cols: Column[]) {
+  return cols.map((c) =>
+    c.kind === "flow"
+      ? { type: "flow" as const, id: c.id }
+      : { type: "stack" as const, checklistIds: c.checklists.map((x) => x.id) },
+  );
 }
 
 interface Props {
@@ -130,9 +138,7 @@ export function FlowsBoard({
   canEditChecklist = false,
 }: Props) {
   const router = useRouter();
-  const [items, setItems] = useState<BoardItem[]>(() =>
-    buildBoardItems(initialFlows, checklists),
-  );
+  const [cols, setCols] = useState<Column[]>(() => buildColumns(initialFlows, checklists));
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [openDetail, setOpenDetail] = useState<{ phase: PhaseRow; flow: FlowRow } | null>(null);
@@ -142,8 +148,47 @@ export function FlowsBoard({
   const authorsMap = Object.fromEntries(members.map((m) => [m.user_id, m]));
 
   useEffect(() => {
-    setItems(buildBoardItems(initialFlows, checklists));
+    setCols(buildColumns(initialFlows, checklists));
   }, [initialFlows, checklists]);
+
+  function persist(next: Column[]) {
+    setCols(next);
+    start(async () => {
+      const r = await reorderBoard({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        columns: columnsToPayload(next),
+      });
+      if (!r.ok) {
+        setError(r.error);
+        setCols(buildColumns(initialFlows, checklists));
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  // Desempilha uma checklist: vira sua propria pilha no fim do board.
+  function unstack(checklist: ChecklistRow) {
+    const next: Column[] = [];
+    for (const c of cols) {
+      if (c.kind === "stack") {
+        const rest = c.checklists.filter((x) => x.id !== checklist.id);
+        if (rest.length) next.push({ ...c, checklists: rest });
+      } else {
+        next.push(c);
+      }
+    }
+    next.push({
+      kind: "stack",
+      id: checklist.id,
+      order: next.length,
+      createdAt: checklist.created_at,
+      checklists: [checklist],
+    });
+    persist(next);
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -172,25 +217,22 @@ export function FlowsBoard({
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = items.findIndex((it) => boardDndId(it) === active.id);
-    const newIndex = items.findIndex((it) => boardDndId(it) === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const reordered = arrayMove(items, oldIndex, newIndex);
-    setItems(reordered);
-    start(async () => {
-      const r = await reorderBoard({
-        workspaceSlug,
-        directorySlug,
-        projectId,
-        items: reordered.map((it) => ({ type: it.kind, id: it.id })),
-      });
-      if (!r.ok) {
-        setError(r.error);
-        setItems(buildBoardItems(initialFlows, checklists));
-        return;
-      }
-      router.refresh();
-    });
+    const a = cols.find((c) => colDndId(c) === active.id);
+    const o = cols.find((c) => colDndId(c) === over.id);
+    if (!a || !o) return;
+
+    // soltar uma pilha de checklist sobre outra pilha => empilha (merge)
+    if (a.kind === "stack" && o.kind === "stack") {
+      const merged: Column = { ...o, checklists: [...o.checklists, ...a.checklists] };
+      const next = cols.filter((c) => c !== a).map((c) => (c === o ? merged : c));
+      persist(next);
+      return;
+    }
+
+    // caso contrario: reordena as colunas horizontalmente
+    const oldIndex = cols.indexOf(a);
+    const newIndex = cols.indexOf(o);
+    persist(arrayMove(cols, oldIndex, newIndex));
   }
 
   function submitCreatePhase(flow: FlowRow, formData: FormData) {
@@ -247,7 +289,8 @@ export function FlowsBoard({
 
       {canReorder ? (
         <p className="text-xs text-slate-500">
-          Arraste pelo cabecalho de cada coluna pra reordenar fluxos e checklists.
+          Arraste pelo cabecalho pra reordenar. Solte uma checklist sobre outra pra
+          empilhar (uma abaixo da outra).
         </p>
       ) : null}
 
@@ -256,43 +299,41 @@ export function FlowsBoard({
         collisionDetection={closestCenter}
         onDragEnd={canReorder ? handleDragEnd : undefined}
       >
-        <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-3">
-          <SortableContext
-            items={items.map(boardDndId)}
-            strategy={horizontalListSortingStrategy}
-          >
-            {items.map((it) =>
-              it.kind === "flow" ? (
+        <div className="-mx-2 flex items-start gap-3 overflow-x-auto px-2 pb-3">
+          <SortableContext items={cols.map(colDndId)} strategy={horizontalListSortingStrategy}>
+            {cols.map((c) =>
+              c.kind === "flow" ? (
                 <SortableFlowColumn
-                  key={`flow:${it.id}`}
-                  flow={it.flow}
-                  phases={phasesByFlow[it.id] ?? []}
+                  key={colDndId(c)}
+                  flow={c.flow}
+                  phases={phasesByFlow[c.id] ?? []}
                   workspaceSlug={workspaceSlug}
                   directorySlug={directorySlug}
                   projectId={projectId}
-                  canEdit={canEditFlow(it.flow)}
-                  canTogglePhase={(p) => canEditPhase(it.flow, p)}
+                  canEdit={canEditFlow(c.flow)}
+                  canTogglePhase={(p) => canEditPhase(c.flow, p)}
                   canReorder={canReorder}
                   pending={pending}
-                  onTogglePhase={(p) => togglePhase(it.flow, p)}
-                  onOpenPhase={(p) => setOpenDetail({ phase: p, flow: it.flow })}
-                  onAddPhase={() => setCreatingFor(it.flow)}
+                  onTogglePhase={(p) => togglePhase(c.flow, p)}
+                  onOpenPhase={(p) => setOpenDetail({ phase: p, flow: c.flow })}
+                  onAddPhase={() => setCreatingFor(c.flow)}
                 />
               ) : (
-                <SortableChecklistColumn
-                  key={`checklist:${it.id}`}
-                  checklist={it.checklist}
-                  sections={sectionsByChecklist[it.id] ?? []}
+                <SortableStackColumn
+                  key={colDndId(c)}
+                  stackId={c.id}
+                  checklists={c.checklists}
+                  sectionsByChecklist={sectionsByChecklist}
                   itemsBySection={itemsBySection}
                   workspaceSlug={workspaceSlug}
                   directorySlug={directorySlug}
                   projectId={projectId}
-                  canEdit={
-                    canEditChecklist &&
-                    (isAdmin || it.checklist.created_by === currentUserId)
-                  }
+                  canEditChecklist={canEditChecklist}
+                  isAdmin={isAdmin}
+                  currentUserId={currentUserId}
                   canReorder={canReorder}
                   pending={pending}
+                  onUnstack={unstack}
                 />
               ),
             )}
@@ -342,44 +383,53 @@ export function FlowsBoard({
   );
 }
 
-function SortableChecklistColumn(props: {
-  checklist: ChecklistRow;
-  sections: ChecklistSectionRow[];
+function SortableStackColumn(props: {
+  stackId: string;
+  checklists: ChecklistRow[];
+  sectionsByChecklist: Record<string, ChecklistSectionRow[]>;
   itemsBySection: Record<string, ChecklistItemRow[]>;
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
-  canEdit: boolean;
+  canEditChecklist: boolean;
+  isAdmin: boolean;
+  currentUserId: string;
   canReorder: boolean;
   pending: boolean;
+  onUnstack: (cl: ChecklistRow) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({
-      id: `checklist:${props.checklist.id}`,
-      disabled: !props.canReorder || props.pending,
-    });
+    useSortable({ id: `stack:${props.stackId}`, disabled: !props.canReorder || props.pending });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.6 : 1,
   };
+  const dragHandle = {
+    attributes: attributes as unknown as Record<string, unknown>,
+    listeners: listeners as unknown as Record<string, unknown> | undefined,
+  };
+  const stacked = props.checklists.length > 1;
   return (
-    <ChecklistColumn
-      checklist={props.checklist}
-      sections={props.sections}
-      itemsBySection={props.itemsBySection}
-      workspaceSlug={props.workspaceSlug}
-      directorySlug={props.directorySlug}
-      projectId={props.projectId}
-      canEdit={props.canEdit}
-      canReorder={props.canReorder}
-      dragRef={setNodeRef}
-      dragStyle={style}
-      dragHandle={{
-        attributes: attributes as unknown as Record<string, unknown>,
-        listeners: listeners as unknown as Record<string, unknown> | undefined,
-      }}
-    />
+    <div ref={setNodeRef} style={style} className="flex w-80 shrink-0 flex-col gap-2">
+      {props.checklists.map((cl) => (
+        <ChecklistColumn
+          key={cl.id}
+          checklist={cl}
+          sections={props.sectionsByChecklist[cl.id] ?? []}
+          itemsBySection={props.itemsBySection}
+          workspaceSlug={props.workspaceSlug}
+          directorySlug={props.directorySlug}
+          projectId={props.projectId}
+          canEdit={
+            props.canEditChecklist && (props.isAdmin || cl.created_by === props.currentUserId)
+          }
+          canReorder={props.canReorder}
+          dragHandle={dragHandle}
+          onUnstack={stacked && props.canReorder ? () => props.onUnstack(cl) : undefined}
+        />
+      ))}
+    </div>
   );
 }
 
