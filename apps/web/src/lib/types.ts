@@ -94,6 +94,11 @@ export type PhaseRow = {
   due_date: string | null;
   completed_at: string | null;
   color: string | null;
+  note: string | null;
+  reminder_recurrence: ReminderRecurrence | null;
+  reminder_at: string | null;
+  reminder_notified_at: string | null;
+  reminder_last_on: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

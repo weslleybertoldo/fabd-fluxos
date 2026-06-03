@@ -251,8 +251,66 @@ async function runJob(req: Request) {
     }
   }
 
+  // ===== 3) lembretes por fase de fluxo =====
+  const { data: phRaw, error: phErr } = await supa
+    .from("phases")
+    .select(
+      `id, name, reminder_recurrence, reminder_at, reminder_notified_at, reminder_last_on, created_by,
+       flow:flows!inner(id, name, project:projects!inner(id, name, directory:directories!inner(workspace_id, slug)))`,
+    )
+    .is("completed_at", null)
+    .not("reminder_recurrence", "is", null)
+    .not("reminder_at", "is", null);
+  if (phErr) return NextResponse.json({ error: phErr.message }, { status: 500 });
+
+  for (const ph of (phRaw ?? []) as unknown as PhaseExpanded[]) {
+    const rec = ph.reminder_recurrence;
+    if (!rec || !ph.reminder_at) {
+      skipped++;
+      continue;
+    }
+    if (!eligible(rec, ph.reminder_at, ph.reminder_notified_at, ph.reminder_last_on)) {
+      skipped++;
+      continue;
+    }
+    const cols = { notifiedAt: "reminder_notified_at", lastOn: "reminder_last_on" };
+    if (!(await lock("phases", ph.id, rec, cols))) {
+      skipped++;
+      continue;
+    }
+    const proj = ph.flow.project;
+    const wsId = proj.directory.workspace_id;
+    const w = await ws(wsId);
+    const link = w.slug ? `/app/${w.slug}/${proj.directory.slug}/${proj.id}/${ph.flow.id}` : null;
+    const title = `Lembrete: ${ph.name}`;
+    const body =
+      `Fluxo "${ph.flow.name}" · Projeto: ${proj.name}` + (rec === "daily" ? " (diário)" : "");
+    try {
+      await deliver(ph.created_by, wsId, title, body, link);
+      sent++;
+    } catch (e) {
+      await revertLock("phases", ph.id, rec, cols, ph.reminder_last_on);
+      errors.push(`phase ${ph.id}: ${(e as Error).message}`);
+    }
+  }
+
   return NextResponse.json({ ok: true, sent, skipped, errors });
 }
+
+type PhaseExpanded = {
+  id: string;
+  name: string;
+  reminder_recurrence: "once" | "daily" | null;
+  reminder_at: string | null;
+  reminder_notified_at: string | null;
+  reminder_last_on: string | null;
+  created_by: string;
+  flow: {
+    id: string;
+    name: string;
+    project: { id: string; name: string; directory: { workspace_id: string; slug: string } };
+  };
+};
 
 type ReminderExpanded = {
   id: string;

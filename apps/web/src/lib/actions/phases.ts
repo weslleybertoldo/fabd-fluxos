@@ -289,6 +289,58 @@ export async function updatePhase(input: {
   return { ok: true, data: undefined };
 }
 
+// Observacao + lembrete da fase. reminderRecurrence null remove o lembrete.
+// Zera os marcadores de disparo pra valer o novo horario.
+export async function setPhaseNoteReminder(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  flowId: string;
+  phaseId: string;
+  note: string | null;
+  reminderRecurrence: "once" | "daily" | null;
+  reminderAt: string | null;
+}): Promise<ActionResult> {
+  const { sb } = await getDb();
+  const ctx = await resolveFlowContext(
+    input.workspaceSlug,
+    input.directorySlug,
+    input.projectId,
+    input.flowId,
+  );
+  if (!ctx.ok) return ctx;
+
+  const rec =
+    input.reminderRecurrence === "once" || input.reminderRecurrence === "daily"
+      ? input.reminderRecurrence
+      : null;
+  if (rec && !input.reminderAt) return { ok: false, error: "Informe o horario do lembrete" };
+  const note = (input.note ?? "").trim() || null;
+  if (note && note.length > 2000) return { ok: false, error: "Observacao muito longa" };
+
+  const { data, error } = await sb
+    .from("phases")
+    .update({
+      note,
+      reminder_recurrence: rec,
+      reminder_at: rec ? input.reminderAt : null,
+      reminder_notified_at: null,
+      reminder_last_on: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.phaseId)
+    .select()
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Sem permissao pra editar esta fase" };
+
+  revalidatePath(
+    `/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}/${input.flowId}`,
+  );
+  revalidatePath(`/app/${input.workspaceSlug}/${input.directorySlug}/${input.projectId}`);
+  return { ok: true, data: undefined };
+}
+
 /** Toggle conclusao da fase. Set completed_at=now() OR null. */
 export async function setPhaseCompleted(input: {
   workspaceSlug: string;
