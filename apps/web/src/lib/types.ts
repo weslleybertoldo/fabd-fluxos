@@ -215,6 +215,11 @@ export type ChecklistItemRow = {
   section_id: string;
   text: string;
   completed_at: string | null;
+  note: string | null;
+  reminder_recurrence: ReminderRecurrence | null;
+  reminder_at: string | null;
+  reminder_notified_at: string | null;
+  reminder_last_on: string | null;
   order_index: number;
   created_by: string;
   created_at: string;
