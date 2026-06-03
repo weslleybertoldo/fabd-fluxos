@@ -201,6 +201,8 @@ export type ChecklistRow = {
   name: string;
   kind: ChecklistKind;
   order_index: number;
+  stack_id: string | null;
+  stack_pos: number;
   created_by: string;
   created_at: string;
   updated_at: string;
