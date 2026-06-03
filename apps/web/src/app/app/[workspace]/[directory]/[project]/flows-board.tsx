@@ -372,6 +372,7 @@ export function FlowsBoard({
           members={members}
           authors={authorsMap}
           availableTags={availableTags}
+          tagColors={tagColors}
           onClose={() => setOpenDetail(null)}
         />
       ) : null}

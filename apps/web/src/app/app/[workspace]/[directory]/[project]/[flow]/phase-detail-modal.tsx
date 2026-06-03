@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MemberAvatar } from "@/components/member-avatar";
+import { TagSelect } from "@/components/tag-select";
 import { PhaseFields } from "./phase-fields";
 import { PhaseAttachments } from "./phase-attachments";
 import { PhaseModal, PhaseResponsiblesModal } from "./phase-edit-modals";
@@ -55,6 +56,7 @@ interface Props {
   members: MemberLite[];
   authors: Record<string, MemberLite>;
   availableTags?: string[];
+  tagColors?: Record<string, string>;
   onClose: () => void;
 }
 
@@ -78,6 +80,7 @@ export function PhaseDetailModal({
   members,
   authors,
   availableTags = [],
+  tagColors = {},
   onClose,
 }: Props) {
   const router = useRouter();
@@ -469,36 +472,13 @@ export function PhaseDetailModal({
                 </h3>
                 {canEdit ? (
                   <div className="space-y-2">
-                    {availableTags.length === 0 ? (
-                      <p className="text-[11px] italic text-slate-400">
-                        Nenhuma tag criada. Crie em Acoes → Gerenciar tags.
-                      </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {availableTags.map((tag) => {
-                          const sel = tagsText.split(",").map((t) => t.trim()).includes(tag);
-                          return (
-                            <button
-                              key={tag}
-                              type="button"
-                              disabled={pending}
-                              onClick={() => {
-                                const cur = tagsText.split(",").map((t) => t.trim()).filter(Boolean);
-                                const next = sel ? cur.filter((t) => t !== tag) : [...cur, tag];
-                                setTagsText(next.join(", "));
-                              }}
-                              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
-                                sel
-                                  ? "border-purple-600 bg-purple-600 text-white"
-                                  : "border-slate-200 bg-white text-slate-600 hover:border-purple-300"
-                              } disabled:opacity-50`}
-                            >
-                              {tag}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <TagSelect
+                      available={availableTags}
+                      selected={tagsText.split(",").map((t) => t.trim()).filter(Boolean)}
+                      onChange={(arr) => setTagsText(arr.join(", "))}
+                      disabled={pending}
+                      tagColors={tagColors}
+                    />
                     <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
                       {(["none", "once", "daily"] as const).map((m) => (
                         <button

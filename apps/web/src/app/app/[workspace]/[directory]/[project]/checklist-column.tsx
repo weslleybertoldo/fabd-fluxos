@@ -11,6 +11,7 @@ import {
   setChecklistItemCompleted,
   updateChecklistItem,
 } from "@/lib/actions/checklists";
+import { TagSelect } from "@/components/tag-select";
 import type {
   ChecklistItemRow,
   ChecklistRow,
@@ -490,39 +491,13 @@ function SectionBlock({
 
                     <div className="space-y-1">
                       <span className="text-xs font-medium text-slate-600">Tags</span>
-                      {availableTags.length === 0 ? (
-                        <p className="text-[11px] italic text-slate-400">
-                          Nenhuma tag criada. Crie em Acoes → Gerenciar tags.
-                        </p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {availableTags.map((tag) => {
-                            const sel = pTags
-                              .split(",")
-                              .map((t) => t.trim())
-                              .includes(tag);
-                            return (
-                              <button
-                                key={tag}
-                                type="button"
-                                disabled={!canEdit || pending}
-                                onClick={() => {
-                                  const cur = pTags.split(",").map((t) => t.trim()).filter(Boolean);
-                                  const next = sel ? cur.filter((t) => t !== tag) : [...cur, tag];
-                                  setPTags(next.join(", "));
-                                }}
-                                className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
-                                  sel
-                                    ? "border-purple-600 bg-purple-600 text-white"
-                                    : "border-slate-200 bg-white text-slate-600 hover:border-purple-300"
-                                } disabled:opacity-50`}
-                              >
-                                {tag}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <TagSelect
+                        available={availableTags}
+                        selected={pTags.split(",").map((t) => t.trim()).filter(Boolean)}
+                        onChange={(arr) => setPTags(arr.join(", "))}
+                        disabled={!canEdit || pending}
+                        tagColors={tagColors}
+                      />
                     </div>
 
                     <div className="space-y-1">
