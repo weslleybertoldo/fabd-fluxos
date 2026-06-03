@@ -733,11 +733,9 @@ function PhaseMiniCard({
       {(phase.tags?.length ?? 0) > 0 ? (
         <span
           title={`Tags: ${phase.tags.join(", ")}`}
-          className="shrink-0 font-bold"
-          style={{ color: tagColors[phase.tags[0]!] ?? "#9333ea" }}
-        >
-          |
-        </span>
+          className="mt-0.5 inline-block h-4 w-1.5 shrink-0 rounded-sm"
+          style={{ backgroundColor: tagColors[phase.tags[0]!] ?? "#9333ea" }}
+        />
       ) : null}
       {phase.reminder_recurrence ? (
         <span title="Tem lembrete" className="shrink-0 text-[11px] text-slate-400">
