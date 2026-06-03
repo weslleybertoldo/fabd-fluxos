@@ -36,6 +36,7 @@ interface Props {
   dragHandle?: DragHandle;
   onUnstack?: () => void;
   availableTags?: string[];
+  tagColors?: Record<string, string>;
 }
 
 export function ChecklistColumn({
@@ -52,6 +53,7 @@ export function ChecklistColumn({
   dragHandle,
   onUnstack,
   availableTags = [],
+  tagColors = {},
 }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +171,7 @@ export function ChecklistColumn({
             canDeleteSection={canEdit && checklist.kind === "flow"}
             base={base}
             availableTags={availableTags}
+            tagColors={tagColors}
           />
         ))}
       </div>
@@ -232,6 +235,7 @@ function SectionBlock({
   canDeleteSection,
   base,
   availableTags,
+  tagColors,
 }: {
   section: ChecklistSectionRow;
   items: ChecklistItemRow[];
@@ -239,6 +243,7 @@ function SectionBlock({
   canDeleteSection: boolean;
   base: { workspaceSlug: string; directorySlug: string; projectId: string };
   availableTags: string[];
+  tagColors: Record<string, string>;
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -423,7 +428,8 @@ function SectionBlock({
                 {hasTags ? (
                   <span
                     title={`Tags: ${item.tags.join(", ")}`}
-                    className="shrink-0 font-bold text-purple-600"
+                    className="shrink-0 font-bold"
+                    style={{ color: tagColors[item.tags[0]!] ?? "#9333ea" }}
                   >
                     |
                   </span>
