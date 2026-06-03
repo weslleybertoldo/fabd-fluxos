@@ -9,6 +9,7 @@ import { PhaseModal, PhaseResponsiblesModal } from "./phase-edit-modals";
 import { createComment, deleteComment } from "@/lib/actions/comments";
 import {
   deletePhase,
+  setPhaseNoteReminder,
   setPhaseResponsibles,
   updatePhase,
 } from "@/lib/actions/phases";
@@ -88,6 +89,60 @@ export function PhaseDetailModal({
   } | null>(null);
   const [editingResp, setEditingResp] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // observacao + lembrete da fase
+  const [noteText, setNoteText] = useState(phase.note ?? "");
+  const [remMode, setRemMode] = useState<"none" | "once" | "daily">(
+    phase.reminder_recurrence ?? "none",
+  );
+  const [remDate, setRemDate] = useState(
+    phase.reminder_recurrence === "once" && phase.reminder_at
+      ? toLocalInput(phase.reminder_at)
+      : "",
+  );
+  const [remTime, setRemTime] = useState(
+    phase.reminder_recurrence === "daily" && phase.reminder_at
+      ? toTimeInput(phase.reminder_at)
+      : "",
+  );
+
+  function saveNoteReminder() {
+    setError(null);
+    let reminderAt: string | null = null;
+    if (remMode === "once") {
+      if (!remDate) {
+        setError("Informe a data/hora do lembrete");
+        return;
+      }
+      reminderAt = new Date(remDate).toISOString();
+    } else if (remMode === "daily") {
+      if (!remTime) {
+        setError("Informe o horario do lembrete");
+        return;
+      }
+      const [h, mi] = remTime.split(":").map(Number);
+      const d = new Date();
+      d.setHours(h ?? 0, mi ?? 0, 0, 0);
+      reminderAt = d.toISOString();
+    }
+    start(async () => {
+      const r = await setPhaseNoteReminder({
+        workspaceSlug,
+        directorySlug,
+        projectId,
+        flowId,
+        phaseId: phase.id,
+        note: noteText,
+        reminderRecurrence: remMode === "none" ? null : remMode,
+        reminderAt,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   const isAdmin = currentUserRole === "admin";
   const canWrite = currentUserRole === "admin" || currentUserRole === "diretor";
@@ -406,6 +461,71 @@ export function PhaseDetailModal({
               </section>
 
               <section>
+                <h3 className="mb-1.5 text-sm font-semibold text-slate-700">
+                  Observacao e lembrete
+                </h3>
+                {canEdit ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      rows={2}
+                      maxLength={2000}
+                      placeholder="Observacao..."
+                      disabled={pending}
+                      className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                    />
+                    <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
+                      {(["none", "once", "daily"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setRemMode(m)}
+                          disabled={pending}
+                          className={`flex-1 rounded-md px-2 py-1 font-medium transition ${
+                            remMode === m
+                              ? "bg-slate-900 text-white"
+                              : "text-slate-500 hover:text-slate-900"
+                          }`}
+                        >
+                          {m === "none" ? "Sem lembrete" : m === "once" ? "Único" : "Recorrente"}
+                        </button>
+                      ))}
+                    </div>
+                    {remMode === "once" ? (
+                      <input
+                        type="datetime-local"
+                        value={remDate}
+                        onChange={(e) => setRemDate(e.target.value)}
+                        disabled={pending}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      />
+                    ) : remMode === "daily" ? (
+                      <input
+                        type="time"
+                        value={remTime}
+                        onChange={(e) => setRemTime(e.target.value)}
+                        disabled={pending}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={saveNoteReminder}
+                      disabled={pending}
+                      className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {pending ? "..." : "Salvar observacao/lembrete"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-700">
+                    {phase.note?.trim() ? phase.note : <span className="italic text-slate-400">Sem observacao.</span>}
+                  </p>
+                )}
+              </section>
+
+              <section>
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-700">Responsaveis</h3>
                   {canEdit ? (
@@ -694,4 +814,16 @@ function linkifyContent(text: string) {
       </a>
     ),
   );
+}
+
+function pad2(n: number) {
+  return n.toString().padStart(2, "0");
+}
+function toLocalInput(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function toTimeInput(iso: string) {
+  const d = new Date(iso);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }

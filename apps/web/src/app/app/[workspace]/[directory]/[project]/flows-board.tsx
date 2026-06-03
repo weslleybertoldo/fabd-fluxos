@@ -655,6 +655,16 @@ function PhaseMiniCard({
           <p className="text-[10px] italic text-slate-400">Sem data</p>
         ) : null}
       </button>
+      {phase.note && phase.note.trim() ? (
+        <span title="Tem observacao" className="shrink-0 font-bold text-amber-500">
+          !
+        </span>
+      ) : null}
+      {phase.reminder_recurrence ? (
+        <span title="Tem lembrete" className="shrink-0 text-[11px] text-slate-400">
+          🔔
+        </span>
+      ) : null}
     </li>
   );
 }
