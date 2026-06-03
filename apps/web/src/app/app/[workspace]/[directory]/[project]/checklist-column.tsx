@@ -429,11 +429,9 @@ function SectionBlock({
                 {hasTags ? (
                   <span
                     title={`Tags: ${item.tags.join(", ")}`}
-                    className="shrink-0 font-bold"
-                    style={{ color: tagColors[item.tags[0]!] ?? "#9333ea" }}
-                  >
-                    |
-                  </span>
+                    className="mt-0.5 inline-block h-4 w-1.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: tagColors[item.tags[0]!] ?? "#9333ea" }}
+                  />
                 ) : null}
                 {hasReminder ? (
                   <span title="Tem lembrete" className="shrink-0 text-slate-400">
