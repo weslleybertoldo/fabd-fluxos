@@ -705,8 +705,8 @@ function PhaseMiniCard({
           <p className="text-[10px] italic text-slate-400">Sem data</p>
         ) : null}
       </button>
-      {phase.note && phase.note.trim() ? (
-        <span title="Tem observacao" className="shrink-0 font-bold text-amber-500">
+      {phase.description && phase.description.trim() ? (
+        <span title="Tem descricao" className="shrink-0 font-bold text-amber-500">
           !
         </span>
       ) : null}
