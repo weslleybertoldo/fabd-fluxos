@@ -11,7 +11,8 @@ import {
   reactivateProject,
   updateProject,
 } from "@/lib/actions/projects";
-import type { ProjectRow, WorkspaceMemberRow } from "@/lib/types";
+import { createTag, deleteTag } from "@/lib/actions/tags";
+import type { ProjectRow, TagRow, WorkspaceMemberRow } from "@/lib/types";
 
 interface Props {
   workspaceSlug: string;
@@ -22,9 +23,11 @@ interface Props {
     "user_id" | "google_full_name" | "google_avatar_url"
   >[];
   canDelete: boolean;
+  tags?: TagRow[];
+  canManageTags?: boolean;
 }
 
-type Modal = "edit" | "responsible" | null;
+type Modal = "edit" | "responsible" | "tags" | null;
 
 export function ProjectActions({
   workspaceSlug,
@@ -32,13 +35,39 @@ export function ProjectActions({
   project,
   members,
   canDelete,
+  tags = [],
+  canManageTags = false,
 }: Props) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [newTag, setNewTag] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
+
+  function addTag() {
+    const name = newTag.trim();
+    if (!name) return;
+    setError(null);
+    start(async () => {
+      const r = await createTag({ workspaceSlug, name });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setNewTag("");
+      router.refresh();
+    });
+  }
+  function removeTag(tagId: string) {
+    setError(null);
+    start(async () => {
+      const r = await deleteTag({ workspaceSlug, tagId });
+      if (!r.ok) setError(r.error);
+      router.refresh();
+    });
+  }
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -202,6 +231,15 @@ export function ProjectActions({
               label="Criar copia"
               onClick={runClone}
             />
+            {canManageTags ? (
+              <MenuItem
+                label="Gerenciar tags"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setModal("tags");
+                }}
+              />
+            ) : null}
             <div className="my-1 h-px bg-slate-100" />
             {isActive ? (
               <>
@@ -312,6 +350,81 @@ export function ProjectActions({
 
             <ModalActions onCancel={() => setModal(null)} pending={pending} />
           </form>
+        </ModalShell>
+      ) : null}
+
+      {modal === "tags" ? (
+        <ModalShell title="Gerenciar tags" onClose={() => setModal(null)} pending={pending}>
+          <div className="space-y-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addTag();
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                maxLength={60}
+                placeholder="Nova tag (ex.: Taskdex)"
+                disabled={pending}
+                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={pending || !newTag.trim()}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Adicionar
+              </button>
+            </form>
+
+            {error ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+            ) : null}
+
+            {tags.length === 0 ? (
+              <p className="text-sm italic text-slate-400">Nenhuma tag criada.</p>
+            ) : (
+              <ul className="space-y-1">
+                {tags.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-1.5"
+                  >
+                    <span className="flex items-center gap-2 text-sm text-slate-800">
+                      <span
+                        className="inline-block h-3 w-3 rounded-full"
+                        style={{ backgroundColor: t.color }}
+                      />
+                      {t.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeTag(t.id)}
+                      disabled={pending}
+                      aria-label="Excluir tag"
+                      className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setModal(null)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </ModalShell>
       ) : null}
     </>

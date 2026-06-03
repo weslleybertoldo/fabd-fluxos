@@ -19,6 +19,7 @@ import type {
   PhaseResponsibleRow,
   PhaseRow,
   ProjectRow,
+  TagRow,
   ChecklistRow,
   ChecklistSectionRow,
   ChecklistItemRow,
@@ -84,6 +85,15 @@ export default async function ProjectPage({
     "user_id" | "google_full_name" | "google_avatar_url" | "role" | "status"
   >[];
   const memberByUserId = new Map(allMembers.map((m) => [m.user_id, m]));
+
+  // Tags do workspace (geridas no menu Acoes; selecionadas em itens/fases)
+  const tagsRes = await supabase
+    .from("tags")
+    .select("*")
+    .eq("workspace_id", ctx.workspace.id)
+    .order("name", { ascending: true });
+  const workspaceTags = (tagsRes.data ?? []) as unknown as TagRow[];
+  const availableTags = workspaceTags.map((t) => t.name);
 
   const responsible = project.responsible_user_id
     ? memberByUserId.get(project.responsible_user_id)
@@ -324,6 +334,11 @@ export default async function ProjectPage({
               project={project}
               members={allMembers}
               canDelete={canDelete}
+              tags={workspaceTags}
+              canManageTags={
+                project.status === "active" &&
+                (ctx.member.role === "admin" || ctx.member.role === "diretor")
+              }
             />
           ) : null}
         </div>
@@ -483,6 +498,7 @@ export default async function ProjectPage({
               project.status === "active" &&
               (ctx.member.role === "admin" || ctx.member.role === "diretor")
             }
+            availableTags={availableTags}
           />
         )}
       </section>
