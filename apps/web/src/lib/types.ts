@@ -95,6 +95,7 @@ export type PhaseRow = {
   completed_at: string | null;
   color: string | null;
   note: string | null;
+  tags: string[];
   reminder_recurrence: ReminderRecurrence | null;
   reminder_at: string | null;
   reminder_notified_at: string | null;
@@ -221,6 +222,7 @@ export type ChecklistItemRow = {
   text: string;
   completed_at: string | null;
   note: string | null;
+  tags: string[];
   reminder_recurrence: ReminderRecurrence | null;
   reminder_at: string | null;
   reminder_notified_at: string | null;

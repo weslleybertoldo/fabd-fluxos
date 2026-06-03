@@ -92,6 +92,7 @@ export function PhaseDetailModal({
 
   // observacao + lembrete da fase
   const [noteText, setNoteText] = useState(phase.note ?? "");
+  const [tagsText, setTagsText] = useState((phase.tags ?? []).join(", "));
   const [remMode, setRemMode] = useState<"none" | "once" | "daily">(
     phase.reminder_recurrence ?? "none",
   );
@@ -133,6 +134,7 @@ export function PhaseDetailModal({
         flowId,
         phaseId: phase.id,
         note: noteText,
+        tags: tagsText.split(",").map((t) => t.trim()).filter(Boolean),
         reminderRecurrence: remMode === "none" ? null : remMode,
         reminderAt,
       });
@@ -474,6 +476,14 @@ export function PhaseDetailModal({
                       placeholder="Observacao..."
                       disabled={pending}
                       className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={tagsText}
+                      onChange={(e) => setTagsText(e.target.value)}
+                      disabled={pending}
+                      placeholder="Tags (ex.: Taskdex) — separadas por virgula"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
                     />
                     <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
                       {(["none", "once", "daily"] as const).map((m) => (
