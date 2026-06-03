@@ -173,15 +173,28 @@ export async function createChecklist(input: {
   const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
   if (!ctx.ok) return ctx;
 
-  const { data: maxCl } = await supabase
-    .from("checklists")
-    .select("order_index")
-    .eq("project_id", ctx.project.id)
-    .order("order_index", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // order_index num espaco compartilhado com flows (board unico) — nasce no fim.
+  const [{ data: maxCl }, { data: maxFlow }] = await Promise.all([
+    supabase
+      .from("checklists")
+      .select("order_index")
+      .eq("project_id", ctx.project.id)
+      .order("order_index", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("flows")
+      .select("order_index")
+      .eq("project_id", ctx.project.id)
+      .order("order_index", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   const nextOrder =
-    ((maxCl as unknown as { order_index?: number } | null)?.order_index ?? -1) + 1;
+    Math.max(
+      (maxCl as unknown as { order_index?: number } | null)?.order_index ?? -1,
+      (maxFlow as unknown as { order_index?: number } | null)?.order_index ?? -1,
+    ) + 1;
 
   const { data: clData, error: clErr } = await (
     supabase.from("checklists") as unknown as SingleInsert
@@ -265,33 +278,46 @@ export async function createChecklist(input: {
 }
 
 /**
- * Reordena as checklists do projeto (grade propria). Reescreve order_index
- * sequencial na ordem recebida, restrito ao projeto.
+ * Reordena o board inteiro (fluxos + checklists na mesma ordem visual).
+ * Reescreve order_index sequencial (0..N-1) num espaco compartilhado entre as
+ * duas tabelas, na ordem recebida.
  */
-export async function reorderChecklists(input: {
+export async function reorderBoard(input: {
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
-  checklistIds: string[];
+  items: { type: "flow" | "checklist"; id: string }[];
 }): Promise<ActionResult> {
   const { supabase, userId } = await getDb();
   if (!userId) return { ok: false, error: "Nao autenticado" };
   const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
   if (!ctx.ok) return ctx;
+  // garante que o projeto pertence a diretoria da URL (evita atuar fora do contexto)
   if (ctx.project.directory_id !== ctx.directory.id) {
     return { ok: false, error: "Projeto nao pertence a diretoria" };
   }
 
-  for (let i = 0; i < input.checklistIds.length; i++) {
-    const id = input.checklistIds[i]!;
-    const { error } = await (supabase.from("checklists") as unknown as SimpleMutate)
+  for (let i = 0; i < input.items.length; i++) {
+    const it = input.items[i]!;
+    const table = it.type === "flow" ? "flows" : "checklists";
+    // restringe ao project_id: id de outro projeto nao e afetado
+    const { error } = await (supabase.from(table) as unknown as SimpleMutate)
       .update({ order_index: i })
-      .eq("id", id)
+      .eq("id", it.id)
       .eq("project_id", ctx.project.id)
       .select()
       .maybeSingle();
-    if (error) return { ok: false, error: `Reorder ${id}: ${error.message}` };
+    if (error) return { ok: false, error: `Reorder ${it.id}: ${error.message}` };
   }
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "project",
+    entityId: ctx.project.id,
+    action: "reorder",
+    changes: { after: { board: input.items } },
+    context: ctxAudit(ctx),
+  });
 
   revalidateProject(input.workspaceSlug, input.directorySlug, input.projectId);
   return { ok: true, data: undefined };

@@ -100,7 +100,7 @@ export function ChecklistColumn({
     <div
       ref={dragRef}
       style={dragStyle}
-      className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+      className="flex w-80 shrink-0 flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3"
     >
       <div
         className={`flex items-start justify-between gap-2 rounded-xl ${
