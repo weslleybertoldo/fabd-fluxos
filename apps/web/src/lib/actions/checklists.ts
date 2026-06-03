@@ -478,6 +478,7 @@ export async function updateChecklistItem(input: {
   projectId: string;
   itemId: string;
   note: string | null;
+  tags?: string[];
   reminderRecurrence: "once" | "daily" | null;
   reminderAt: string | null;
 }): Promise<ActionResult> {
@@ -491,10 +492,12 @@ export async function updateChecklistItem(input: {
   }
   const note = (input.note ?? "").trim() || null;
   if (note && note.length > 2000) return { ok: false, error: "Observacao muito longa" };
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 20);
 
   const { error } = await (supabase.from("checklist_items") as unknown as SimpleMutate)
     .update({
       note,
+      tags,
       reminder_recurrence: rec,
       reminder_at: rec ? input.reminderAt : null,
       reminder_notified_at: null,

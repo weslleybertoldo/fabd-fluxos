@@ -298,6 +298,7 @@ export async function setPhaseNoteReminder(input: {
   flowId: string;
   phaseId: string;
   note: string | null;
+  tags?: string[];
   reminderRecurrence: "once" | "daily" | null;
   reminderAt: string | null;
 }): Promise<ActionResult> {
@@ -317,11 +318,13 @@ export async function setPhaseNoteReminder(input: {
   if (rec && !input.reminderAt) return { ok: false, error: "Informe o horario do lembrete" };
   const note = (input.note ?? "").trim() || null;
   if (note && note.length > 2000) return { ok: false, error: "Observacao muito longa" };
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 20);
 
   const { data, error } = await sb
     .from("phases")
     .update({
       note,
+      tags,
       reminder_recurrence: rec,
       reminder_at: rec ? input.reminderAt : null,
       reminder_notified_at: null,

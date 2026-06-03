@@ -226,6 +226,7 @@ function SectionBlock({
   // painel de observacao + lembrete (aberto ao clicar no nome do item)
   const [panelId, setPanelId] = useState<string | null>(null);
   const [pNote, setPNote] = useState("");
+  const [pTags, setPTags] = useState("");
   const [pMode, setPMode] = useState<"none" | "once" | "daily">("none");
   const [pDate, setPDate] = useState("");
   const [pTime, setPTime] = useState("");
@@ -238,6 +239,7 @@ function SectionBlock({
     setError(null);
     setPanelId(item.id);
     setPNote(item.note ?? "");
+    setPTags((item.tags ?? []).join(", "));
     const m = item.reminder_recurrence ?? "none";
     setPMode(m);
     setPDate(m === "once" && item.reminder_at ? toDatetimeLocal(item.reminder_at) : "");
@@ -268,6 +270,7 @@ function SectionBlock({
         ...base,
         itemId: item.id,
         note: pNote,
+        tags: pTags.split(",").map((t) => t.trim()).filter(Boolean),
         reminderRecurrence: pMode === "none" ? null : pMode,
         reminderAt,
       });
@@ -360,6 +363,7 @@ function SectionBlock({
         {items.map((item) => {
           const completed = !!item.completed_at;
           const hasNote = !!(item.note && item.note.trim());
+          const hasTags = (item.tags?.length ?? 0) > 0;
           const hasReminder = !!item.reminder_recurrence;
           const open = panelId === item.id;
           return (
@@ -394,6 +398,14 @@ function SectionBlock({
                     !
                   </span>
                 ) : null}
+                {hasTags ? (
+                  <span
+                    title={`Tags: ${item.tags.join(", ")}`}
+                    className="shrink-0 font-bold text-purple-600"
+                  >
+                    |
+                  </span>
+                ) : null}
                 {hasReminder ? (
                   <span title="Tem lembrete" className="shrink-0 text-slate-400">
                     🔔
@@ -422,6 +434,14 @@ function SectionBlock({
                     placeholder="Observacao..."
                     disabled={!canEdit || pending}
                     className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                  />
+                  <input
+                    type="text"
+                    value={pTags}
+                    onChange={(e) => setPTags(e.target.value)}
+                    disabled={!canEdit || pending}
+                    placeholder="Tags (ex.: Taskdex, urgente) — separadas por virgula"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
                   />
                   <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-[10px]">
                     {(["none", "once", "daily"] as const).map((m) => (
