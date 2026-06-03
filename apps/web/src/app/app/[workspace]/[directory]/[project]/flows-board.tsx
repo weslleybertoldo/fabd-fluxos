@@ -113,6 +113,7 @@ interface Props {
   sectionsByChecklist?: Record<string, ChecklistSectionRow[]>;
   itemsBySection?: Record<string, ChecklistItemRow[]>;
   canEditChecklist?: boolean;
+  availableTags?: string[];
 }
 
 export function FlowsBoard({
@@ -136,6 +137,7 @@ export function FlowsBoard({
   sectionsByChecklist = {},
   itemsBySection = {},
   canEditChecklist = false,
+  availableTags = [],
 }: Props) {
   const router = useRouter();
   const [cols, setCols] = useState<Column[]>(() => buildColumns(initialFlows, checklists));
@@ -334,6 +336,7 @@ export function FlowsBoard({
                   canReorder={canReorder}
                   pending={pending}
                   onUnstack={unstack}
+                  availableTags={availableTags}
                 />
               ),
             )}
@@ -364,6 +367,7 @@ export function FlowsBoard({
           responsibleIds={responsiblesByPhase[openDetail.phase.id] ?? []}
           members={members}
           authors={authorsMap}
+          availableTags={availableTags}
           onClose={() => setOpenDetail(null)}
         />
       ) : null}
@@ -397,6 +401,7 @@ function SortableStackColumn(props: {
   canReorder: boolean;
   pending: boolean;
   onUnstack: (cl: ChecklistRow) => void;
+  availableTags: string[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: `stack:${props.stackId}`, disabled: !props.canReorder || props.pending });
@@ -427,6 +432,7 @@ function SortableStackColumn(props: {
           canReorder={props.canReorder}
           dragHandle={dragHandle}
           onUnstack={stacked && props.canReorder ? () => props.onUnstack(cl) : undefined}
+          availableTags={props.availableTags}
         />
       ))}
     </div>

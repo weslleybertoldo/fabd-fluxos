@@ -94,6 +94,32 @@ export async function createTag(input: {
   return { ok: true, data: { tagId: tag.id } };
 }
 
+/** Exclui uma tag do workspace (admin/diretor). Remove tambem de flow_tags via cascade. */
+export async function deleteTag(input: {
+  workspaceSlug: string;
+  tagId: string;
+}): Promise<ActionResult> {
+  const { sb, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+  const ws = await resolveWorkspace(input.workspaceSlug);
+  if (!ws) return { ok: false, error: "Workspace nao encontrado" };
+
+  const { error } = await sb.from("tags").delete().eq("id", input.tagId).eq("workspace_id", ws.id);
+  if (error) return { ok: false, error: error.message };
+
+  await audit({
+    workspaceId: ws.id,
+    entity: "tag",
+    entityId: input.tagId,
+    action: "delete",
+    changes: {},
+    context: {},
+  });
+
+  revalidatePath(`/app/${input.workspaceSlug}`, "layout");
+  return { ok: true, data: undefined };
+}
+
 /** Atribui tag existente a um fluxo. */
 export async function addTagToFlow(input: {
   workspaceSlug: string;

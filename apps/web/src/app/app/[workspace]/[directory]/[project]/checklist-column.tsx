@@ -35,6 +35,7 @@ interface Props {
   dragStyle?: React.CSSProperties;
   dragHandle?: DragHandle;
   onUnstack?: () => void;
+  availableTags?: string[];
 }
 
 export function ChecklistColumn({
@@ -50,6 +51,7 @@ export function ChecklistColumn({
   dragStyle,
   dragHandle,
   onUnstack,
+  availableTags = [],
 }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +168,7 @@ export function ChecklistColumn({
             canEdit={canEdit}
             canDeleteSection={canEdit && checklist.kind === "flow"}
             base={base}
+            availableTags={availableTags}
           />
         ))}
       </div>
@@ -228,12 +231,14 @@ function SectionBlock({
   canEdit,
   canDeleteSection,
   base,
+  availableTags,
 }: {
   section: ChecklistSectionRow;
   items: ChecklistItemRow[];
   canEdit: boolean;
   canDeleteSection: boolean;
   base: { workspaceSlug: string; directorySlug: string; projectId: string };
+  availableTags: string[];
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -477,17 +482,42 @@ function SectionBlock({
                       />
                     </label>
 
-                    <label className="block space-y-1">
+                    <div className="space-y-1">
                       <span className="text-xs font-medium text-slate-600">Tags</span>
-                      <input
-                        type="text"
-                        value={pTags}
-                        onChange={(e) => setPTags(e.target.value)}
-                        disabled={!canEdit || pending}
-                        placeholder="Ex.: Taskdex, urgente — separadas por virgula"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
-                      />
-                    </label>
+                      {availableTags.length === 0 ? (
+                        <p className="text-[11px] italic text-slate-400">
+                          Nenhuma tag criada. Crie em Acoes → Gerenciar tags.
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {availableTags.map((tag) => {
+                            const sel = pTags
+                              .split(",")
+                              .map((t) => t.trim())
+                              .includes(tag);
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                disabled={!canEdit || pending}
+                                onClick={() => {
+                                  const cur = pTags.split(",").map((t) => t.trim()).filter(Boolean);
+                                  const next = sel ? cur.filter((t) => t !== tag) : [...cur, tag];
+                                  setPTags(next.join(", "));
+                                }}
+                                className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
+                                  sel
+                                    ? "border-purple-600 bg-purple-600 text-white"
+                                    : "border-slate-200 bg-white text-slate-600 hover:border-purple-300"
+                                } disabled:opacity-50`}
+                              >
+                                {tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
 
                     <div className="space-y-1">
                       <span className="text-xs font-medium text-slate-600">Lembrete</span>
