@@ -114,6 +114,7 @@ interface Props {
   itemsBySection?: Record<string, ChecklistItemRow[]>;
   canEditChecklist?: boolean;
   availableTags?: string[];
+  tagColors?: Record<string, string>;
 }
 
 export function FlowsBoard({
@@ -138,6 +139,7 @@ export function FlowsBoard({
   itemsBySection = {},
   canEditChecklist = false,
   availableTags = [],
+  tagColors = {},
 }: Props) {
   const router = useRouter();
   const [cols, setCols] = useState<Column[]>(() => buildColumns(initialFlows, checklists));
@@ -319,6 +321,7 @@ export function FlowsBoard({
                   onTogglePhase={(p) => togglePhase(c.flow, p)}
                   onOpenPhase={(p) => setOpenDetail({ phase: p, flow: c.flow })}
                   onAddPhase={() => setCreatingFor(c.flow)}
+                  tagColors={tagColors}
                 />
               ) : (
                 <SortableStackColumn
@@ -337,6 +340,7 @@ export function FlowsBoard({
                   pending={pending}
                   onUnstack={unstack}
                   availableTags={availableTags}
+                  tagColors={tagColors}
                 />
               ),
             )}
@@ -402,6 +406,7 @@ function SortableStackColumn(props: {
   pending: boolean;
   onUnstack: (cl: ChecklistRow) => void;
   availableTags: string[];
+  tagColors: Record<string, string>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: `stack:${props.stackId}`, disabled: !props.canReorder || props.pending });
@@ -433,6 +438,7 @@ function SortableStackColumn(props: {
           dragHandle={dragHandle}
           onUnstack={stacked && props.canReorder ? () => props.onUnstack(cl) : undefined}
           availableTags={props.availableTags}
+          tagColors={props.tagColors}
         />
       ))}
     </div>
@@ -452,6 +458,7 @@ function SortableFlowColumn(props: {
   onTogglePhase: (phase: PhaseRow) => void;
   onOpenPhase: (phase: PhaseRow) => void;
   onAddPhase: () => void;
+  tagColors: Record<string, string>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: `flow:${props.flow.id}`, disabled: !props.canReorder || props.pending });
@@ -484,6 +491,7 @@ function SortableFlowColumn(props: {
         flowType={props.flow.type}
         onTogglePhase={props.onTogglePhase}
         onOpenPhase={props.onOpenPhase}
+        tagColors={props.tagColors}
       />
     </div>
   );
@@ -582,6 +590,7 @@ function FlowColumnBody({
   flowType,
   onTogglePhase,
   onOpenPhase,
+  tagColors,
 }: {
   phases: PhaseRow[];
   canTogglePhase: (phase: PhaseRow) => boolean;
@@ -589,6 +598,7 @@ function FlowColumnBody({
   flowType: "continuous" | "non_continuous";
   onTogglePhase: (phase: PhaseRow) => void;
   onOpenPhase: (phase: PhaseRow) => void;
+  tagColors: Record<string, string>;
 }) {
   if (phases.length === 0) {
     return (
@@ -620,6 +630,7 @@ function FlowColumnBody({
             flowType={flowType}
             onToggle={() => onTogglePhase(p)}
             onOpen={() => onOpenPhase(p)}
+            tagColors={tagColors}
           />
         ))}
       </ol>
@@ -635,6 +646,7 @@ function PhaseMiniCard({
   flowType,
   onToggle,
   onOpen,
+  tagColors,
 }: {
   phase: PhaseRow;
   index: number;
@@ -643,6 +655,7 @@ function PhaseMiniCard({
   flowType: "continuous" | "non_continuous";
   onToggle: () => void;
   onOpen: () => void;
+  tagColors: Record<string, string>;
 }) {
   const completed = !!phase.completed_at;
   const isOverdue =
@@ -717,7 +730,11 @@ function PhaseMiniCard({
         </span>
       ) : null}
       {(phase.tags?.length ?? 0) > 0 ? (
-        <span title={`Tags: ${phase.tags.join(", ")}`} className="shrink-0 font-bold text-purple-600">
+        <span
+          title={`Tags: ${phase.tags.join(", ")}`}
+          className="shrink-0 font-bold"
+          style={{ color: tagColors[phase.tags[0]!] ?? "#9333ea" }}
+        >
           |
         </span>
       ) : null}

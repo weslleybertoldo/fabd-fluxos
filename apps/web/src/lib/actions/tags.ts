@@ -120,6 +120,37 @@ export async function deleteTag(input: {
   return { ok: true, data: undefined };
 }
 
+/** Atualiza a cor de uma tag do workspace (admin/diretor). */
+export async function setTagColor(input: {
+  workspaceSlug: string;
+  tagId: string;
+  color: string;
+}): Promise<ActionResult> {
+  const { sb, userId } = await getDb();
+  if (!userId) return { ok: false, error: "Nao autenticado" };
+  const color = input.color.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) return { ok: false, error: "Cor invalida" };
+  const ws = await resolveWorkspace(input.workspaceSlug);
+  if (!ws) return { ok: false, error: "Workspace nao encontrado" };
+
+  const sbAny = sb as unknown as {
+    from(t: string): {
+      update(v: Record<string, unknown>): {
+        eq(c: string, val: string): { eq(c: string, val: string): Promise<{ error: { message: string } | null }> };
+      };
+    };
+  };
+  const { error } = await sbAny
+    .from("tags")
+    .update({ color })
+    .eq("id", input.tagId)
+    .eq("workspace_id", ws.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/app/${input.workspaceSlug}`, "layout");
+  return { ok: true, data: undefined };
+}
+
 /** Atribui tag existente a um fluxo. */
 export async function addTagToFlow(input: {
   workspaceSlug: string;

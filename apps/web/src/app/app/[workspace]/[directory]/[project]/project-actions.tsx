@@ -11,7 +11,7 @@ import {
   reactivateProject,
   updateProject,
 } from "@/lib/actions/projects";
-import { createTag, deleteTag } from "@/lib/actions/tags";
+import { createTag, deleteTag, setTagColor } from "@/lib/actions/tags";
 import type { ProjectRow, TagRow, WorkspaceMemberRow } from "@/lib/types";
 
 interface Props {
@@ -64,6 +64,14 @@ export function ProjectActions({
     setError(null);
     start(async () => {
       const r = await deleteTag({ workspaceSlug, tagId });
+      if (!r.ok) setError(r.error);
+      router.refresh();
+    });
+  }
+  function changeTagColor(tagId: string, color: string) {
+    setError(null);
+    start(async () => {
+      const r = await setTagColor({ workspaceSlug, tagId, color });
       if (!r.ok) setError(r.error);
       router.refresh();
     });
@@ -395,9 +403,13 @@ export function ProjectActions({
                     className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-1.5"
                   >
                     <span className="flex items-center gap-2 text-sm text-slate-800">
-                      <span
-                        className="inline-block h-3 w-3 rounded-full"
-                        style={{ backgroundColor: t.color }}
+                      <input
+                        type="color"
+                        value={t.color}
+                        disabled={pending}
+                        onChange={(e) => changeTagColor(t.id, e.target.value)}
+                        title="Mudar cor"
+                        className="h-5 w-5 cursor-pointer rounded-full border-0 bg-transparent p-0"
                       />
                       {t.name}
                     </span>

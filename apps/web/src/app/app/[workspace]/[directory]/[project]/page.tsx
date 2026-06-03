@@ -94,6 +94,9 @@ export default async function ProjectPage({
     .order("name", { ascending: true });
   const workspaceTags = (tagsRes.data ?? []) as unknown as TagRow[];
   const availableTags = workspaceTags.map((t) => t.name);
+  const tagColors: Record<string, string> = Object.fromEntries(
+    workspaceTags.map((t) => [t.name, t.color]),
+  );
 
   const responsible = project.responsible_user_id
     ? memberByUserId.get(project.responsible_user_id)
@@ -499,6 +502,7 @@ export default async function ProjectPage({
               (ctx.member.role === "admin" || ctx.member.role === "diretor")
             }
             availableTags={availableTags}
+            tagColors={tagColors}
           />
         )}
       </section>
