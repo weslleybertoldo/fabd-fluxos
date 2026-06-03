@@ -8,6 +8,7 @@ import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
 import { CreateChecklistButton } from "./create-checklist-button";
 import { FlowsBoard } from "./flows-board";
+import { ChecklistsBoard } from "./checklists-board";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type {
   DirectoryRow,
@@ -441,7 +442,7 @@ export default async function ProjectPage({
           })}
         </nav>
 
-        {flows.length === 0 && checklists.length === 0 ? (
+        {flows.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
             <p className="font-medium text-slate-700">
               {flowStatus === "active"
@@ -460,7 +461,6 @@ export default async function ProjectPage({
           </div>
         ) : (
           <FlowsBoard
-            id="listas"
             workspaceSlug={ctx.workspace.slug}
             directorySlug={directory.slug}
             projectId={project.id}
@@ -476,16 +476,25 @@ export default async function ProjectPage({
             commentsByPhase={commentsByPhase}
             responsiblesByPhase={responsiblesByPhase}
             members={allMembers}
-            checklists={checklists}
-            sectionsByChecklist={sectionsByChecklist}
-            itemsBySection={itemsBySection}
-            canEditChecklist={
-              project.status === "active" &&
-              (ctx.member.role === "admin" || ctx.member.role === "diretor")
-            }
           />
         )}
       </section>
+
+      <ChecklistsBoard
+        id="listas"
+        workspaceSlug={ctx.workspace.slug}
+        directorySlug={directory.slug}
+        projectId={project.id}
+        checklists={checklists}
+        sectionsByChecklist={sectionsByChecklist}
+        itemsBySection={itemsBySection}
+        canEdit={
+          project.status === "active" &&
+          (ctx.member.role === "admin" || ctx.member.role === "diretor")
+        }
+        isAdmin={ctx.member.role === "admin"}
+        currentUserId={ctx.member.user_id}
+      />
 
       {/* Secao "Lembretes" standalone removida da UI — lembretes agora sao por
           item de checklist. Os reminders existentes continuam disparando pelo cron. */}
