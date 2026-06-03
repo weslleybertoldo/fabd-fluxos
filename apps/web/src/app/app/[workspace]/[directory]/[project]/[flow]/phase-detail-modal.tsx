@@ -91,7 +91,6 @@ export function PhaseDetailModal({
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // observacao + lembrete da fase
-  const [noteText, setNoteText] = useState(phase.note ?? "");
   const [tagsText, setTagsText] = useState((phase.tags ?? []).join(", "));
   const [remMode, setRemMode] = useState<"none" | "once" | "daily">(
     phase.reminder_recurrence ?? "none",
@@ -133,7 +132,7 @@ export function PhaseDetailModal({
         projectId,
         flowId,
         phaseId: phase.id,
-        note: noteText,
+        note: phase.note ?? null,
         tags: tagsText.split(",").map((t) => t.trim()).filter(Boolean),
         reminderRecurrence: remMode === "none" ? null : remMode,
         reminderAt,
@@ -464,19 +463,10 @@ export function PhaseDetailModal({
 
               <section>
                 <h3 className="mb-1.5 text-sm font-semibold text-slate-700">
-                  Observacao e lembrete
+                  Lembrete e tags
                 </h3>
                 {canEdit ? (
                   <div className="space-y-2">
-                    <textarea
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      rows={2}
-                      maxLength={2000}
-                      placeholder="Observacao..."
-                      disabled={pending}
-                      className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
-                    />
                     <input
                       type="text"
                       value={tagsText}
@@ -525,12 +515,14 @@ export function PhaseDetailModal({
                       disabled={pending}
                       className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                     >
-                      {pending ? "..." : "Salvar observacao/lembrete"}
+                      {pending ? "..." : "Salvar lembrete/tags"}
                     </button>
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-700">
-                    {phase.note?.trim() ? phase.note : <span className="italic text-slate-400">Sem observacao.</span>}
+                  <p className="text-sm italic text-slate-400">
+                    {(phase.tags?.length ?? 0) > 0
+                      ? `Tags: ${phase.tags.join(", ")}`
+                      : "Sem lembrete/tags."}
                   </p>
                 )}
               </section>
