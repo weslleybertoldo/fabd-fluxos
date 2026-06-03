@@ -9,6 +9,7 @@ import {
   deleteChecklistItem,
   deleteChecklistSection,
   setChecklistItemCompleted,
+  updateChecklistItem,
 } from "@/lib/actions/checklists";
 import type {
   ChecklistItemRow,
@@ -222,6 +223,63 @@ function SectionBlock({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  // painel de observacao + lembrete (aberto ao clicar no nome do item)
+  const [panelId, setPanelId] = useState<string | null>(null);
+  const [pNote, setPNote] = useState("");
+  const [pMode, setPMode] = useState<"none" | "once" | "daily">("none");
+  const [pDate, setPDate] = useState("");
+  const [pTime, setPTime] = useState("");
+
+  function openPanel(item: ChecklistItemRow) {
+    if (panelId === item.id) {
+      setPanelId(null);
+      return;
+    }
+    setError(null);
+    setPanelId(item.id);
+    setPNote(item.note ?? "");
+    const m = item.reminder_recurrence ?? "none";
+    setPMode(m);
+    setPDate(m === "once" && item.reminder_at ? toDatetimeLocal(item.reminder_at) : "");
+    setPTime(m === "daily" && item.reminder_at ? toTimeInput(item.reminder_at) : "");
+  }
+
+  function savePanel(item: ChecklistItemRow) {
+    setError(null);
+    let reminderAt: string | null = null;
+    if (pMode === "once") {
+      if (!pDate) {
+        setError("Informe a data/hora do lembrete");
+        return;
+      }
+      reminderAt = new Date(pDate).toISOString();
+    } else if (pMode === "daily") {
+      if (!pTime) {
+        setError("Informe o horario do lembrete");
+        return;
+      }
+      const [h, mi] = pTime.split(":").map(Number);
+      const d = new Date();
+      d.setHours(h ?? 0, mi ?? 0, 0, 0);
+      reminderAt = d.toISOString();
+    }
+    start(async () => {
+      const r = await updateChecklistItem({
+        ...base,
+        itemId: item.id,
+        note: pNote,
+        reminderRecurrence: pMode === "none" ? null : pMode,
+        reminderAt,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setPanelId(null);
+      router.refresh();
+    });
+  }
+
   function addItem() {
     const t = text.trim();
     if (!t) return;
@@ -301,40 +359,123 @@ function SectionBlock({
       <ul className="mb-1 space-y-1">
         {items.map((item) => {
           const completed = !!item.completed_at;
+          const hasNote = !!(item.note && item.note.trim());
+          const hasReminder = !!item.reminder_recurrence;
+          const open = panelId === item.id;
           return (
-            <li key={item.id} className="flex items-start gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => toggle(item)}
-                disabled={pending || !canEdit}
-                aria-label={completed ? "Reativar" : "Concluir"}
-                className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border-2 transition ${
-                  completed
-                    ? "border-emerald-500 bg-emerald-500 text-white"
-                    : "border-slate-300 bg-white text-transparent hover:border-emerald-400"
-                } disabled:opacity-50`}
-              >
-                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </button>
-              <span
-                className={`flex-1 ${
-                  completed ? "text-emerald-800 line-through" : "text-slate-800"
-                }`}
-              >
-                {item.text}
-              </span>
-              {canEdit ? (
+            <li key={item.id}>
+              <div className="group flex items-start gap-2 text-xs">
                 <button
                   type="button"
-                  onClick={() => removeItem(item)}
-                  disabled={pending}
-                  aria-label="Excluir item"
-                  className="text-red-500 hover:text-red-700 disabled:opacity-50"
+                  onClick={() => toggle(item)}
+                  disabled={pending || !canEdit}
+                  aria-label={completed ? "Reativar" : "Concluir"}
+                  className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border-2 transition ${
+                    completed
+                      ? "border-emerald-500 bg-emerald-500 text-white"
+                      : "border-slate-300 bg-white text-transparent hover:border-emerald-400"
+                  } disabled:opacity-50`}
                 >
-                  ✕
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => openPanel(item)}
+                  className={`flex-1 text-left ${
+                    completed ? "text-emerald-800 line-through" : "text-slate-800"
+                  } hover:text-slate-950`}
+                >
+                  {item.text}
+                </button>
+                {hasNote ? (
+                  <span title="Tem observacao" className="shrink-0 font-bold text-amber-500">
+                    !
+                  </span>
+                ) : null}
+                {hasReminder ? (
+                  <span title="Tem lembrete" className="shrink-0 text-slate-400">
+                    🔔
+                  </span>
+                ) : null}
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(item)}
+                    disabled={pending}
+                    aria-label="Excluir item"
+                    className="shrink-0 text-red-500 opacity-0 transition hover:text-red-700 group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+
+              {open ? (
+                <div className="mt-1 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <textarea
+                    value={pNote}
+                    onChange={(e) => setPNote(e.target.value)}
+                    rows={2}
+                    maxLength={2000}
+                    placeholder="Observacao..."
+                    disabled={!canEdit || pending}
+                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                  />
+                  <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-[10px]">
+                    {(["none", "once", "daily"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setPMode(m)}
+                        disabled={!canEdit || pending}
+                        className={`flex-1 rounded-md px-1 py-1 font-medium transition ${
+                          pMode === m ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"
+                        }`}
+                      >
+                        {m === "none" ? "Sem lembrete" : m === "once" ? "Único" : "Recorrente"}
+                      </button>
+                    ))}
+                  </div>
+                  {pMode === "once" ? (
+                    <input
+                      type="datetime-local"
+                      value={pDate}
+                      onChange={(e) => setPDate(e.target.value)}
+                      disabled={!canEdit || pending}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                    />
+                  ) : pMode === "daily" ? (
+                    <input
+                      type="time"
+                      value={pTime}
+                      onChange={(e) => setPTime(e.target.value)}
+                      disabled={!canEdit || pending}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                    />
+                  ) : null}
+                  {canEdit ? (
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => savePanel(item)}
+                        disabled={pending}
+                        className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {pending ? "..." : "Salvar"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPanelId(null)}
+                        disabled={pending}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </li>
           );
@@ -369,4 +510,16 @@ function SectionBlock({
       ) : null}
     </div>
   );
+}
+
+function pad2(n: number) {
+  return n.toString().padStart(2, "0");
+}
+function toDatetimeLocal(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function toTimeInput(iso: string) {
+  const d = new Date(iso);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }

@@ -8,7 +8,6 @@ import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
 import { CreateChecklistButton } from "./create-checklist-button";
 import { FlowsBoard } from "./flows-board";
-import { RemindersAndLists } from "./reminders-and-lists";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type {
   DirectoryRow,
@@ -20,7 +19,6 @@ import type {
   PhaseResponsibleRow,
   PhaseRow,
   ProjectRow,
-  ReminderRow,
   ChecklistRow,
   ChecklistSectionRow,
   ChecklistItemRow,
@@ -109,21 +107,14 @@ export default async function ProjectPage({
       ? flowStatusParam
       : "active";
 
-  // Onda 3 (paralelo): flows + reminders + checklists — todas dependem so de project.id
-  const [flowsRes, remindersRes, checklistsRes] = await Promise.all([
+  // Onda 3 (paralelo): flows + checklists — todas dependem so de project.id
+  const [flowsRes, checklistsRes] = await Promise.all([
     supabase
       .from("flows")
       .select("*")
       .eq("project_id", project.id)
       .eq("status", flowStatus)
       .order("order_index", { ascending: true })
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("reminders")
-      .select("*")
-      .eq("project_id", project.id)
-      .order("completed_at", { ascending: true, nullsFirst: true })
-      .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false }),
     supabase
       .from("checklists")
@@ -133,7 +124,6 @@ export default async function ProjectPage({
       .order("created_at", { ascending: false }),
   ]);
   const flows = (flowsRes.data ?? []) as unknown as FlowRow[];
-  const reminders = (remindersRes.data ?? []) as unknown as ReminderRow[];
   const checklists = (checklistsRes.data ?? []) as unknown as ChecklistRow[];
 
   // Onda 4 (paralelo): phases (flowIds) + checklist_sections (checklistIds)
@@ -497,16 +487,8 @@ export default async function ProjectPage({
         )}
       </section>
 
-      <RemindersAndLists
-        workspaceSlug={ctx.workspace.slug}
-        directorySlug={directory.slug}
-        projectId={project.id}
-        canCreate={
-          project.status === "active" &&
-          (ctx.member.role === "admin" || ctx.member.role === "diretor")
-        }
-        reminders={reminders}
-      />
+      {/* Secao "Lembretes" standalone removida da UI — lembretes agora sao por
+          item de checklist. Os reminders existentes continuam disparando pelo cron. */}
     </div>
   );
 }

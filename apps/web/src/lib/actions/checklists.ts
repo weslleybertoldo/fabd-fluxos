@@ -470,6 +470,45 @@ export async function setChecklistItemCompleted(input: {
   return { ok: true, data: undefined };
 }
 
+// Atualiza observacao e/ou config de lembrete de um item. reminderRecurrence
+// null remove o lembrete. Zera os marcadores de disparo pra valer o novo horario.
+export async function updateChecklistItem(input: {
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  itemId: string;
+  note: string | null;
+  reminderRecurrence: "once" | "daily" | null;
+  reminderAt: string | null;
+}): Promise<ActionResult> {
+  const { supabase } = await getDb();
+  const rec =
+    input.reminderRecurrence === "once" || input.reminderRecurrence === "daily"
+      ? input.reminderRecurrence
+      : null;
+  if (rec && !input.reminderAt) {
+    return { ok: false, error: "Informe o horario do lembrete" };
+  }
+  const note = (input.note ?? "").trim() || null;
+  if (note && note.length > 2000) return { ok: false, error: "Observacao muito longa" };
+
+  const { error } = await (supabase.from("checklist_items") as unknown as SimpleMutate)
+    .update({
+      note,
+      reminder_recurrence: rec,
+      reminder_at: rec ? input.reminderAt : null,
+      reminder_notified_at: null,
+      reminder_last_on: null,
+    })
+    .eq("id", input.itemId)
+    .select()
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+
+  revalidateProject(input.workspaceSlug, input.directorySlug, input.projectId);
+  return { ok: true, data: undefined };
+}
+
 export async function deleteChecklistItem(input: {
   workspaceSlug: string;
   directorySlug: string;
