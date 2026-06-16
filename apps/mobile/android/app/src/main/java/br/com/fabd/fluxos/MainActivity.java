@@ -26,6 +26,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Plugin de atualizacao in-app (baixa APK + abre instalador). Tem que
+        // ser registrado ANTES de super.onCreate pra entrar na bridge Capacitor.
+        registerPlugin(ApkInstallerPlugin.class);
         super.onCreate(savedInstanceState);
         requestNotificationPermissionIfNeeded();
     }

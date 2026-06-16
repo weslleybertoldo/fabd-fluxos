@@ -146,6 +146,9 @@ importers:
       '@capacitor/browser':
         specifier: ^8.0.3
         version: 8.0.3(@capacitor/core@8.3.1)
+      '@capacitor/core':
+        specifier: ^8.3.1
+        version: 8.3.1
       '@capacitor/local-notifications':
         specifier: ^8.0.2
         version: 8.0.2(@capacitor/core@8.3.1)

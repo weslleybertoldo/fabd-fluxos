@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isNativePlatform, openExternalUrl } from "@/lib/native";
+import { isNativePlatform } from "@/lib/native";
+import { downloadAndInstall } from "@/lib/apkUpdater";
 
 type UpdatePayload = { version?: string; url?: string };
 type ProgressPayload = { percent?: number };
@@ -26,7 +27,9 @@ type State = "available" | "downloading" | "ready";
  *   baixa em background, mostra progresso, depois "Reiniciar agora / depois".
  *   Se adiar, arquivo fica no cache do electron-updater — proxima abertura
  *   re-emite 'update-downloaded' direto pulando o download.
- * - Android (Capacitor): fallback antigo (Custom Tab pra baixar APK).
+ * - Android (Capacitor): baixa o APK in-app com barra de progresso e abre o
+ *   instalador do sistema (plugin nativo ApkInstaller). iOS/web caem no
+ *   fallback de abrir o link no navegador.
  */
 export function UpdateToast() {
   const [info, setInfo] = useState<UpdatePayload | null>(null);
@@ -34,6 +37,9 @@ export function UpdateToast() {
   const [progress, setProgress] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [platform, setPlatform] = useState<Platform>("web");
+  // Estado do download in-app do APK (Android). null = ainda nao baixando.
+  const [apkProgress, setApkProgress] = useState<number | null>(null);
+  const [needsPerm, setNeedsPerm] = useState(false);
 
   // Listeners IPC do electron-updater (desktop)
   useEffect(() => {
@@ -142,23 +148,38 @@ export function UpdateToast() {
     .electronAPI;
   const isDesktopAuto = Boolean(electronAPI?.updaterDownload);
 
-  // Android: fluxo manual antigo
+  // Android: download in-app do APK com barra + instalador do sistema.
+  // iOS/web: fallback (abre o link no navegador via downloadAndInstall).
   if (!isDesktopAuto) {
     const releasePageUrl =
       info.url ?? "https://github.com/weslleybertoldo/fabd-fluxos/releases/latest";
+    // Mesma origem: o /api/download/apk faz proxy do binario, o plugin nativo
+    // baixa direto sem esbarrar no redirect cross-origin do CDN do GitHub.
     const downloadUrl =
-      platform === "android" ? "/api/download/apk" : releasePageUrl;
+      platform === "android"
+        ? `${window.location.origin}/api/download/apk`
+        : releasePageUrl;
 
-    const openDownload = async () => {
-      const fullUrl = downloadUrl.startsWith("/")
-        ? `${window.location.origin}${downloadUrl}`
-        : downloadUrl;
-      if (isNativePlatform()) {
-        await openExternalUrl(fullUrl);
-      } else {
-        window.open(downloadUrl, "_blank", "noopener,noreferrer");
+    const startDownload = async () => {
+      setNeedsPerm(false);
+      setApkProgress(0);
+      try {
+        const res = await downloadAndInstall(downloadUrl, (p) =>
+          setApkProgress(p),
+        );
+        if (res === "permission") {
+          // Abriu as configuracoes; usuario libera e tenta de novo.
+          setNeedsPerm(true);
+        } else if (res === "fallback") {
+          // iOS/web: abriu no navegador, fecha o toast.
+          setDismissed(true);
+        }
+      } catch {
+        /* erro de rede/download — deixa o usuario tentar de novo */
+      } finally {
+        // Reseta a barra: se cancelar a tela "Instalar?", o botao reaparece.
+        setApkProgress(null);
       }
-      setDismissed(true);
     };
 
     return (
@@ -166,22 +187,51 @@ export function UpdateToast() {
         <p className="text-sm font-semibold text-blue-900">
           Nova versão disponível{info.version ? ` (v${info.version})` : ""}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={openDownload}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-          >
-            {platform === "android" ? "Baixar Android (APK)" : "Ver no GitHub"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setDismissed(true)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Depois
-          </button>
-        </div>
+
+        {apkProgress !== null ? (
+          <div className="mt-3">
+            <div className="h-2 overflow-hidden rounded bg-blue-100">
+              <div
+                className="h-full bg-blue-600 transition-[width] duration-200"
+                style={{ width: `${Math.max(0, Math.min(100, apkProgress))}%` }}
+              />
+            </div>
+            <p className="mt-1 text-center text-xs text-blue-900/70">
+              {apkProgress < 100
+                ? `Baixando ${apkProgress}%`
+                : "Abrindo instalador..."}
+            </p>
+          </div>
+        ) : (
+          <>
+            {needsPerm && (
+              <p className="mt-2 text-xs text-blue-900/80">
+                Permita &quot;instalar apps desconhecidos&quot; nas
+                configurações que abriram e toque novamente.
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={startDownload}
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                {needsPerm
+                  ? "Tentar novamente"
+                  : platform === "android"
+                    ? "Baixar e instalar"
+                    : "Ver no GitHub"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissed(true)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Depois
+              </button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
