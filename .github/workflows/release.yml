@@ -36,6 +36,11 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # o pacote legado "tools" saiu do repositorio do SDK (cmdline-tools 16) e o
+          # default da action ('tools platform-tools') derrubava o job. O Gradle baixa
+          # platforms/build-tools sozinho (licencas aceitas pela action).
+          packages: platform-tools
 
       - name: Get version
         id: version
