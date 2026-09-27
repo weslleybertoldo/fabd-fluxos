@@ -235,6 +235,57 @@ export type ChecklistItemRow = {
   updated_at: string;
 };
 
+// Kanban estilo Pipefy: fases (colunas) + cards que andam entre elas.
+export type KanbanRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  order_index: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KanbanPhaseRow = {
+  id: string;
+  kanban_id: string;
+  name: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KanbanCardRow = {
+  id: string;
+  kanban_id: string;
+  phase_id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  tags: string[];
+  position: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KanbanCardResponsibleRow = {
+  card_id: string;
+  user_id: string;
+  assigned_by: string;
+  assigned_at: string;
+};
+
+export type KanbanCardCommentRow = {
+  id: string;
+  card_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type NotificationType =
   | "phase_due_soon"
   | "phase_overdue"

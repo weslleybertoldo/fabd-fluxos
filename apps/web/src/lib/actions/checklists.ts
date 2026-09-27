@@ -173,8 +173,8 @@ export async function createChecklist(input: {
   const ctx = await resolveProject(input.workspaceSlug, input.directorySlug, input.projectId);
   if (!ctx.ok) return ctx;
 
-  // order_index num espaco compartilhado com flows (board unico) — nasce no fim.
-  const [{ data: maxCl }, { data: maxFlow }] = await Promise.all([
+  // order_index num espaco compartilhado com flows/kanbans (board unico) — nasce no fim.
+  const [{ data: maxCl }, { data: maxFlow }, { data: maxKb }] = await Promise.all([
     supabase
       .from("checklists")
       .select("order_index")
@@ -189,11 +189,19 @@ export async function createChecklist(input: {
       .order("order_index", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("kanbans")
+      .select("order_index")
+      .eq("project_id", ctx.project.id)
+      .order("order_index", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
   const nextOrder =
     Math.max(
       (maxCl as unknown as { order_index?: number } | null)?.order_index ?? -1,
       (maxFlow as unknown as { order_index?: number } | null)?.order_index ?? -1,
+      (maxKb as unknown as { order_index?: number } | null)?.order_index ?? -1,
     ) + 1;
 
   const { data: clData, error: clErr } = await (
@@ -284,6 +292,7 @@ export async function createChecklist(input: {
  */
 type BoardColumn =
   | { type: "flow"; id: string }
+  | { type: "kanban"; id: string }
   | { type: "stack"; checklistIds: string[] };
 
 /**
@@ -309,6 +318,14 @@ export async function reorderBoard(input: {
     const col = input.columns[i]!;
     if (col.type === "flow") {
       const { error } = await (supabase.from("flows") as unknown as SimpleMutate)
+        .update({ order_index: i })
+        .eq("id", col.id)
+        .eq("project_id", ctx.project.id)
+        .select()
+        .maybeSingle();
+      if (error) return { ok: false, error: `Reorder ${col.id}: ${error.message}` };
+    } else if (col.type === "kanban") {
+      const { error } = await (supabase.from("kanbans") as unknown as SimpleMutate)
         .update({ order_index: i })
         .eq("id", col.id)
         .eq("project_id", ctx.project.id)

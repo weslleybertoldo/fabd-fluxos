@@ -874,6 +874,8 @@ export type Database = {
         | "member"
         | "reminder"
         | "list_item"
+        | "kanban"
+        | "kanban_card"
       field_mode: "fixed" | "mobile"
       field_type: "text" | "textarea" | "checkbox" | "number" | "date"
       flow_status: "active" | "completed" | "archived"
@@ -1030,6 +1032,8 @@ export const Constants = {
         "member",
         "reminder",
         "list_item",
+        "kanban",
+        "kanban_card",
       ],
       field_mode: ["fixed", "mobile"],
       field_type: ["text", "textarea", "checkbox", "number", "date"],

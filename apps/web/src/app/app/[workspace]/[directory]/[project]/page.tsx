@@ -7,6 +7,7 @@ import { MemberAvatar } from "@/components/member-avatar";
 import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
 import { CreateChecklistButton } from "./create-checklist-button";
+import { CreateKanbanButton } from "./create-kanban-button";
 import { FlowsBoard } from "./flows-board";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type {
@@ -23,6 +24,8 @@ import type {
   ChecklistRow,
   ChecklistSectionRow,
   ChecklistItemRow,
+  KanbanPhaseRow,
+  KanbanRow,
   WorkspaceMemberRow,
 } from "@/lib/types";
 
@@ -120,8 +123,8 @@ export default async function ProjectPage({
       ? flowStatusParam
       : "active";
 
-  // Onda 3 (paralelo): flows + checklists — todas dependem so de project.id
-  const [flowsRes, checklistsRes] = await Promise.all([
+  // Onda 3 (paralelo): flows + checklists + kanbans — todas dependem so de project.id
+  const [flowsRes, checklistsRes, kanbansRes] = await Promise.all([
     supabase
       .from("flows")
       .select("*")
@@ -135,14 +138,23 @@ export default async function ProjectPage({
       .eq("project_id", project.id)
       .order("order_index", { ascending: true })
       .order("created_at", { ascending: false }),
+    supabase
+      .from("kanbans")
+      .select("*")
+      .eq("project_id", project.id)
+      .order("order_index", { ascending: true })
+      .order("created_at", { ascending: false }),
   ]);
   const flows = (flowsRes.data ?? []) as unknown as FlowRow[];
   const checklists = (checklistsRes.data ?? []) as unknown as ChecklistRow[];
+  const kanbans = (kanbansRes.data ?? []) as unknown as KanbanRow[];
 
-  // Onda 4 (paralelo): phases (flowIds) + checklist_sections (checklistIds)
+  // Onda 4 (paralelo): phases (flowIds) + checklist_sections (checklistIds) +
+  // fases e cards dos Kanbans (resumo por fase na coluna do board)
   const flowIds = flows.map((f) => f.id);
   const checklistIds = checklists.map((c) => c.id);
-  const [phasesRes, sectionsRes] = await Promise.all([
+  const kanbanIds = kanbans.map((k) => k.id);
+  const [phasesRes, sectionsRes, kanbanPhasesRes, kanbanCardsRes] = await Promise.all([
     flowIds.length
       ? supabase
           .from("phases")
@@ -157,7 +169,25 @@ export default async function ProjectPage({
           .in("checklist_id", checklistIds)
           .order("order_index", { ascending: true })
       : Promise.resolve({ data: [] }),
+    kanbanIds.length
+      ? supabase
+          .from("kanban_phases")
+          .select("*")
+          .in("kanban_id", kanbanIds)
+          .order("position", { ascending: true })
+      : Promise.resolve({ data: [] }),
+    kanbanIds.length
+      ? supabase.from("kanban_cards").select("id, phase_id").in("kanban_id", kanbanIds)
+      : Promise.resolve({ data: [] }),
   ]);
+  const kanbanPhasesByKanban: Record<string, KanbanPhaseRow[]> = {};
+  for (const ph of (kanbanPhasesRes.data ?? []) as unknown as KanbanPhaseRow[]) {
+    (kanbanPhasesByKanban[ph.kanban_id] ??= []).push(ph);
+  }
+  const cardCountByPhase: Record<string, number> = {};
+  for (const c of (kanbanCardsRes.data ?? []) as unknown as { phase_id: string }[]) {
+    cardCountByPhase[c.phase_id] = (cardCountByPhase[c.phase_id] ?? 0) + 1;
+  }
   const allPhases = (phasesRes.data ?? []) as unknown as PhaseRow[];
   const sections = (sectionsRes.data ?? []) as unknown as ChecklistSectionRow[];
 
@@ -293,10 +323,13 @@ export default async function ProjectPage({
           { table: "flows", filter: `project_id=eq.${project.id}` },
           { table: "reminders", filter: `project_id=eq.${project.id}` },
           { table: "checklists", filter: `project_id=eq.${project.id}` },
+          { table: "kanbans", filter: `project_id=eq.${project.id}` },
           // phases/sections/items sem coluna project_id direta — RLS filtra
           { table: "phases" },
           { table: "checklist_sections" },
           { table: "checklist_items" },
+          { table: "kanban_phases" },
+          { table: "kanban_cards" },
         ]}
       />
       <header className="space-y-3">
@@ -422,6 +455,11 @@ export default async function ProjectPage({
             ) : null}
             {canCreateFlow ? (
               <>
+                <CreateKanbanButton
+                  workspaceSlug={ctx.workspace.slug}
+                  directorySlug={directory.slug}
+                  projectId={project.id}
+                />
                 <CreateChecklistButton
                   workspaceSlug={ctx.workspace.slug}
                   directorySlug={directory.slug}
@@ -459,7 +497,7 @@ export default async function ProjectPage({
           })}
         </nav>
 
-        {flows.length === 0 && checklists.length === 0 ? (
+        {flows.length === 0 && checklists.length === 0 && kanbans.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
             <p className="font-medium text-slate-700">
               {flowStatus === "active"
@@ -472,7 +510,7 @@ export default async function ProjectPage({
               {!canCreateFlow && flowStatus === "active"
                 ? "Aguardando admin ou diretor criar o primeiro fluxo."
                 : flowStatus === "active"
-                  ? "Use os botoes 'Criar fluxo' ou 'Criar checklist' acima pra comecar."
+                  ? "Use os botoes 'Criar fluxo', 'Criar Kanban' ou 'Criar checklist' acima pra comecar."
                   : null}
             </p>
           </div>
@@ -503,6 +541,9 @@ export default async function ProjectPage({
             }
             availableTags={availableTags}
             tagColors={tagColors}
+            kanbans={kanbans}
+            kanbanPhasesByKanban={kanbanPhasesByKanban}
+            cardCountByPhase={cardCountByPhase}
           />
         )}
       </section>

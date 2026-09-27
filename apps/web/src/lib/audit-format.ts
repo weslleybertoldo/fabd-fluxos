@@ -14,6 +14,8 @@ const ENTITY_PT: Record<string, string> = {
   member: "membro",
   reminder: "lembrete",
   list_item: "item da lista",
+  kanban: "kanban",
+  kanban_card: "card",
 };
 
 const ACTION_PT: Record<string, string> = {
@@ -30,6 +32,7 @@ const ACTION_PT: Record<string, string> = {
   assign: "atribuiu",
   seed: "iniciou o workspace (seed)",
   request: "solicitou acesso",
+  move: "moveu",
 };
 
 export function translateEntity(e: string): string {
@@ -50,6 +53,8 @@ type AuditContext = Partial<{
   flow_name: string;
   phase_id: string;
   phase_name: string;
+  kanban_id: string;
+  kanban_name: string;
 }>;
 
 /**
@@ -86,6 +91,16 @@ export function buildPath(
       if (ctx.project_name) parts.push(ctx.project_name);
       if (ctx.flow_name) parts.push(ctx.flow_name);
       parts.push(ctx.phase_name ?? fallbacks?.entityName ?? "(fase removida)");
+      break;
+    case "kanban":
+      if (ctx.directory_name) parts.push(ctx.directory_name);
+      if (ctx.project_name) parts.push(ctx.project_name);
+      parts.push(ctx.kanban_name ?? fallbacks?.entityName ?? "(kanban removido)");
+      break;
+    case "kanban_card":
+      if (ctx.directory_name) parts.push(ctx.directory_name);
+      if (ctx.project_name) parts.push(ctx.project_name);
+      if (ctx.kanban_name) parts.push(ctx.kanban_name);
       break;
     default:
       // attachment, comment, field, etc. — apenas entidade pai disponivel via context
@@ -136,7 +151,15 @@ export function summarizeChanges(entry: AuditLogRow): string | null {
     return messages.join("; ");
   }
 
-  // Caso 4: archive/complete/reactivate — already implicit no verbo
+  // Caso 4: card movido de fase no Kanban
+  if (entry.action === "move") {
+    const from = (before.phase as string) ?? null;
+    const to = (after.phase as string) ?? null;
+    if (from && to) return `"${from}" → "${to}"`;
+    return null;
+  }
+
+  // Caso 5: archive/complete/reactivate — already implicit no verbo
   return null;
 }
 
@@ -150,6 +173,9 @@ function formatFieldChange(key: string, before: unknown, after: unknown): string
     type: "tipo",
     status: "status",
     responsible_user_id: "responsavel",
+    title: "titulo",
+    due_date: "vencimento",
+    phase: "fase",
   };
   const label = labels[key] ?? key;
 
@@ -158,7 +184,7 @@ function formatFieldChange(key: string, before: unknown, after: unknown): string
     if (before && !after) return `removeu imagem`;
     if (before && after) return `trocou imagem`;
   }
-  if (key === "name") {
+  if (key === "name" || key === "title") {
     return `renomeou "${before ?? ""}" → "${after ?? ""}"`;
   }
   if (key === "description") {
@@ -169,6 +195,8 @@ function formatFieldChange(key: string, before: unknown, after: unknown): string
   if (key === "color") {
     return `mudou cor pra ${after ?? "padrao"}`;
   }
+  if (key === "fase_nova") return `criou a fase "${after ?? ""}"`;
+  if (key === "fase_excluida") return `excluiu a fase "${before ?? ""}"`;
   if (key === "type") {
     const map: Record<string, string> = {
       continuous: "continuo",
