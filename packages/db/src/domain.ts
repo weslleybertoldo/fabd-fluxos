@@ -21,7 +21,9 @@ export type EntityType =
   | "tag"
   | "member"
   | "reminder"
-  | "list_item";
+  | "list_item"
+  | "kanban"
+  | "kanban_card";
 export type NotificationType =
   | "phase_due_soon"
   | "phase_overdue"
