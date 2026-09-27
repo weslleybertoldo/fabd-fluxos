@@ -34,6 +34,7 @@ import {
 import { KanbanCardModal } from "./kanban-card-modal";
 import type {
   KanbanCardCommentRow,
+  KanbanCardLink,
   KanbanCardRow,
   KanbanPhaseRow,
   KanbanRow,
@@ -80,6 +81,8 @@ interface Props {
   availableTags: string[];
   tagColors: Record<string, string>;
   initialOpenCardId: string | null;
+  originByCard?: Record<string, KanbanCardLink | null>;
+  generatedByCard?: Record<string, KanbanCardLink[]>;
 }
 
 export function KanbanBoard({
@@ -98,6 +101,8 @@ export function KanbanBoard({
   availableTags,
   tagColors,
   initialOpenCardId,
+  originByCard = {},
+  generatedByCard = {},
 }: Props) {
   const router = useRouter();
   const scope = { workspaceSlug, directorySlug, projectId, kanbanId: kanban.id };
@@ -352,6 +357,8 @@ export function KanbanBoard({
           availableTags={availableTags}
           tagColors={tagColors}
           pending={pending}
+          origin={openCard.id in originByCard ? (originByCard[openCard.id] ?? null) : undefined}
+          generated={generatedByCard[openCard.id] ?? []}
           onMove={(phaseId) => moveCardTo(openCard, phaseId)}
           onClose={closeCard}
         />
@@ -767,6 +774,14 @@ function CardFace(props: {
             : "border-slate-200 bg-white"
       }`}
     >
+      {card.created_by_automation_id ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+          Automação
+        </span>
+      ) : null}
       {card.tags.length ? (
         <div className="flex flex-wrap gap-1" title={`Tags: ${card.tags.join(", ")}`}>
           {card.tags.map((t) => (
