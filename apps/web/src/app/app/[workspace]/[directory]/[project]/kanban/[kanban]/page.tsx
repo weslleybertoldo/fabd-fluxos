@@ -3,23 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { getVisibleDirectoryIds } from "@/lib/visibility";
+import { loadKanbanBoards } from "@/lib/kanban-data";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import { KanbanBoard } from "./kanban-board";
 import { KanbanHeaderActions } from "./kanban-header-actions";
-import {
-  KanbanAutomationsPanel,
-  type AutomationTarget,
-  type AutomationView,
-} from "./kanban-automations-panel";
+import { KanbanAutomationsPanel } from "./kanban-automations-panel";
 import type {
   DirectoryRow,
-  KanbanAutomationRow,
-  KanbanAutomationRunRow,
-  KanbanCardCommentRow,
-  KanbanCardLink,
-  KanbanCardResponsibleRow,
-  KanbanCardRow,
-  KanbanPhaseRow,
   KanbanRow,
   ProjectRow,
   TagRow,
@@ -87,194 +77,15 @@ export default async function KanbanPage({
   const kanban = kbRes.data as unknown as KanbanRow | null;
   if (!project || !kanban) notFound();
 
-  // Onda 3: fases + cards
-  const [phasesRes, cardsRes] = await Promise.all([
-    supabase
-      .from("kanban_phases")
-      .select("*")
-      .eq("kanban_id", kanban.id)
-      .order("position", { ascending: true }),
-    supabase
-      .from("kanban_cards")
-      .select("*")
-      .eq("kanban_id", kanban.id)
-      .order("position", { ascending: true }),
-  ]);
-  const phases = (phasesRes.data ?? []) as unknown as KanbanPhaseRow[];
-  const cards = (cardsRes.data ?? []) as unknown as KanbanCardRow[];
-
-  // Onda 4: responsaveis + comentarios dos cards
-  const cardIds = cards.map((c) => c.id);
-  const [respRes, commentsRes] = await Promise.all([
-    cardIds.length
-      ? supabase.from("kanban_card_responsibles").select("*").in("card_id", cardIds)
-      : Promise.resolve({ data: [] }),
-    cardIds.length
-      ? supabase
-          .from("kanban_card_comments")
-          .select("*")
-          .in("card_id", cardIds)
-          .order("created_at", { ascending: true })
-      : Promise.resolve({ data: [] }),
-  ]);
-  const responsiblesByCard: Record<string, string[]> = {};
-  for (const r of (respRes.data ?? []) as unknown as KanbanCardResponsibleRow[]) {
-    (responsiblesByCard[r.card_id] ??= []).push(r.user_id);
-  }
-  const commentsByCard: Record<string, KanbanCardCommentRow[]> = {};
-  for (const c of (commentsRes.data ?? []) as unknown as KanbanCardCommentRow[]) {
-    (commentsByCard[c.card_id] ??= []).push(c);
-  }
-
-  // Onda 5: mapa do workspace (diretorias > projetos > kanbans > fases) pras
-  // automacoes (destinos) e pros vinculos "Veio de" / "Gerou" dos cards
-  const [allDirsRes, automationsRes, runsRes] = await Promise.all([
-    supabase
-      .from("directories")
-      .select("id, name, slug, order_index")
-      .eq("workspace_id", ctx.workspace.id)
-      .order("order_index", { ascending: true }),
-    supabase
-      .from("kanban_automations")
-      .select("*")
-      .eq("source_kanban_id", kanban.id)
-      .order("created_at", { ascending: true }),
-    cardIds.length
-      ? supabase.from("kanban_automation_runs").select("*").in("source_card_id", cardIds)
-      : Promise.resolve({ data: [] }),
-  ]);
-  const allDirs = (allDirsRes.data ?? []) as unknown as Pick<
-    DirectoryRow,
-    "id" | "name" | "slug" | "order_index"
-  >[];
-  const { data: allProjData } = allDirs.length
-    ? await supabase
-        .from("projects")
-        .select("id, name, directory_id, status")
-        .in(
-          "directory_id",
-          allDirs.map((d) => d.id),
-        )
-    : { data: [] };
-  const allProjects = (allProjData ?? []) as unknown as Pick<
-    ProjectRow,
-    "id" | "name" | "directory_id" | "status"
-  >[];
-  const { data: allKbData } = allProjects.length
-    ? await supabase
-        .from("kanbans")
-        .select("id, name, project_id")
-        .in(
-          "project_id",
-          allProjects.map((p) => p.id),
-        )
-    : { data: [] };
-  const allKanbans = (allKbData ?? []) as unknown as Pick<KanbanRow, "id" | "name" | "project_id">[];
-  const automations = (automationsRes.data ?? []) as unknown as KanbanAutomationRow[];
-  const runs = (runsRes.data ?? []) as unknown as KanbanAutomationRunRow[];
-  const linkedIds = Array.from(
-    new Set([
-      ...runs.map((r) => r.created_card_id).filter((x): x is string => !!x),
-      ...cards.map((c) => c.source_card_id).filter((x): x is string => !!x),
-    ]),
-  );
-  const [allPhasesRes, linkedRes] = await Promise.all([
-    allKanbans.length
-      ? supabase
-          .from("kanban_phases")
-          .select("id, name, kanban_id, position")
-          .in(
-            "kanban_id",
-            allKanbans.map((k) => k.id),
-          )
-          .order("position", { ascending: true })
-      : Promise.resolve({ data: [] }),
-    linkedIds.length
-      ? supabase.from("kanban_cards").select("id, title, kanban_id, phase_id").in("id", linkedIds)
-      : Promise.resolve({ data: [] }),
-  ]);
-  const allPhases = (allPhasesRes.data ?? []) as unknown as Pick<
-    KanbanPhaseRow,
-    "id" | "name" | "kanban_id" | "position"
-  >[];
-  const linkedCards = (linkedRes.data ?? []) as unknown as Pick<
-    KanbanCardRow,
-    "id" | "title" | "kanban_id" | "phase_id"
-  >[];
-
-  const dirById = new Map(allDirs.map((d) => [d.id, d]));
-  const projById = new Map(allProjects.map((p) => [p.id, p]));
-  const kbById = new Map(allKanbans.map((k) => [k.id, k]));
-  const phaseById = new Map(allPhases.map((p) => [p.id, p]));
-  const phasesByKanban = new Map<string, { id: string; name: string }[]>();
-  for (const ph of allPhases) {
-    const list = phasesByKanban.get(ph.kanban_id) ?? [];
-    list.push({ id: ph.id, name: ph.name });
-    phasesByKanban.set(ph.kanban_id, list);
-  }
-  function kanbanPath(kbId: string) {
-    const k = kbById.get(kbId);
-    const p = k ? projById.get(k.project_id) : undefined;
-    const d = p ? dirById.get(p.directory_id) : undefined;
-    if (!k || !p || !d) return null;
-    return {
-      label: `${d.name} › ${p.name} › ${k.name}`,
-      href: `/app/${ctx.workspace.slug}/${d.slug}/${p.id}/kanban/${k.id}`,
-      directoryId: d.id,
-      projectActive: p.status === "active",
-    };
-  }
-  function cardLink(card: Pick<KanbanCardRow, "id" | "title" | "kanban_id" | "phase_id">): KanbanCardLink {
-    const path = kanbanPath(card.kanban_id);
-    const phaseName = phaseById.get(card.phase_id)?.name;
-    return {
-      cardId: card.id,
-      title: card.title,
-      where: `${path?.label ?? "Kanban"}${phaseName ? ` · fase ${phaseName}` : ""}`,
-      href: path ? `${path.href}?card=${card.id}` : null,
-    };
-  }
-  const linkedById = new Map(linkedCards.map((c) => [c.id, c]));
-  const originByCard: Record<string, KanbanCardLink | null> = {};
-  for (const c of cards) {
-    if (!c.created_by_automation_id && !c.source_card_id) continue;
-    const src = c.source_card_id ? linkedById.get(c.source_card_id) : undefined;
-    originByCard[c.id] = src ? cardLink(src) : null;
-  }
-  const generatedByCard: Record<string, KanbanCardLink[]> = {};
-  for (const r of runs) {
-    const created = r.created_card_id ? linkedById.get(r.created_card_id) : undefined;
-    if (created) (generatedByCard[r.source_card_id] ??= []).push(cardLink(created));
-  }
-
-  const automationViews: AutomationView[] = automations.map((a) => {
-    const path = kanbanPath(a.target_kanban_id);
-    return {
-      id: a.id,
-      active: a.active,
-      sourcePhaseName: phases.find((p) => p.id === a.source_phase_id)?.name ?? "?",
-      targetLabel: path?.label ?? "Kanban",
-      targetPhaseName: phaseById.get(a.target_phase_id)?.name ?? "?",
-      targetHref: path?.href ?? null,
-    };
+  // Ondas 3+: fases, cards, responsaveis, comentarios, automacoes e vinculos
+  const [board] = await loadKanbanBoards(supabase, {
+    workspace: ctx.workspace,
+    visibleIds,
+    member: ctx.member,
+    project,
+    kanbans: [kanban],
   });
-  // Destinos: outros Kanbans do workspace, em projeto ativo, nas diretorias visiveis
-  const automationTargets: AutomationTarget[] = allKanbans
-    .filter((k) => k.id !== kanban.id)
-    .map((k) => ({ k, path: kanbanPath(k.id) }))
-    .filter(
-      ({ path }) =>
-        !!path &&
-        path.projectActive &&
-        (visibleIds === null || visibleIds.includes(path.directoryId)),
-    )
-    .map(({ k, path }) => ({
-      kanbanId: k.id,
-      label: path!.label,
-      phases: phasesByKanban.get(k.id) ?? [],
-    }))
-    .filter((t) => t.phases.length > 0)
-    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  if (!board) notFound();
 
   const members = (membersRes.data ?? []) as unknown as Pick<
     WorkspaceMemberRow,
@@ -285,15 +96,6 @@ export default async function KanbanPage({
   const tagColors: Record<string, string> = Object.fromEntries(
     workspaceTags.map((t) => [t.name, t.color]),
   );
-
-  // Permissoes alinhadas com can_edit_kanban / kb_delete / kcc_insert
-  const role = ctx.member.role;
-  const uid = ctx.member.user_id;
-  const isAdmin = role === "admin";
-  const canEditKanban =
-    isAdmin ||
-    (role === "diretor" && (kanban.created_by === uid || project.responsible_user_id === uid));
-  const canDeleteKanban = isAdmin;
 
   const projectHref = `/app/${ctx.workspace.slug}/${directory.slug}/${project.id}`;
 
@@ -349,19 +151,19 @@ export default async function KanbanPage({
                 projectId: project.id,
                 kanbanId: kanban.id,
               }}
-              canEdit={canEditKanban}
-              sourcePhases={phases.map((p) => ({ id: p.id, name: p.name }))}
-              automations={automationViews}
-              targets={automationTargets}
+              canEdit={board.canEditKanban}
+              sourcePhases={board.phases.map((p) => ({ id: p.id, name: p.name }))}
+              automations={board.automationViews}
+              targets={board.automationTargets}
             />
-            {canEditKanban || canDeleteKanban ? (
+            {board.canEditKanban || board.canDeleteKanban ? (
               <KanbanHeaderActions
                 workspaceSlug={ctx.workspace.slug}
                 directorySlug={directory.slug}
                 projectId={project.id}
                 kanban={kanban}
-                canEdit={canEditKanban}
-                canDelete={canDeleteKanban}
+                canEdit={board.canEditKanban}
+                canDelete={board.canDeleteKanban}
               />
             ) : null}
           </div>
@@ -373,19 +175,19 @@ export default async function KanbanPage({
         directorySlug={directory.slug}
         projectId={project.id}
         kanban={kanban}
-        phases={phases}
-        cards={cards}
-        responsiblesByCard={responsiblesByCard}
-        commentsByCard={commentsByCard}
+        phases={board.phases}
+        cards={board.cards}
+        responsiblesByCard={board.responsiblesByCard}
+        commentsByCard={board.commentsByCard}
         members={members}
-        currentUserId={uid}
-        currentUserRole={role}
-        canEditKanban={canEditKanban}
+        currentUserId={ctx.member.user_id}
+        currentUserRole={ctx.member.role}
+        canEditKanban={board.canEditKanban}
         availableTags={availableTags}
         tagColors={tagColors}
         initialOpenCardId={openCardId ?? null}
-        originByCard={originByCard}
-        generatedByCard={generatedByCard}
+        originByCard={board.originByCard}
+        generatedByCard={board.generatedByCard}
       />
     </div>
   );

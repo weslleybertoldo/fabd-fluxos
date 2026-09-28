@@ -9,21 +9,7 @@ import {
   setKanbanAutomationActive,
   type KanbanScope,
 } from "@/lib/actions/kanbans";
-
-export type AutomationView = {
-  id: string;
-  active: boolean;
-  sourcePhaseName: string;
-  targetLabel: string; // "Marketing › Divulgação › Artes"
-  targetPhaseName: string;
-  targetHref: string | null;
-};
-
-export type AutomationTarget = {
-  kanbanId: string;
-  label: string;
-  phases: { id: string; name: string }[];
-};
+import type { AutomationTarget, AutomationView } from "@/lib/types";
 
 interface Props {
   scope: KanbanScope;

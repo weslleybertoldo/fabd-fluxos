@@ -3,12 +3,17 @@ import { notFound, redirect } from "next/navigation";
 import { requireWorkspaceMember } from "@/lib/workspace";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { getVisibleDirectoryIds } from "@/lib/visibility";
+import { loadKanbanBoards, type KanbanBoardData } from "@/lib/kanban-data";
+import { sectionOrderOf } from "@/lib/project-sections";
 import { MemberAvatar } from "@/components/member-avatar";
 import { ProjectActions } from "./project-actions";
 import { CreateFlowButton } from "./create-flow-button";
 import { CreateChecklistButton } from "./create-checklist-button";
 import { CreateKanbanButton } from "./create-kanban-button";
 import { FlowsBoard } from "./flows-board";
+import { KanbanBoard } from "./kanban/[kanban]/kanban-board";
+import { KanbanHeaderActions } from "./kanban/[kanban]/kanban-header-actions";
+import { KanbanAutomationsPanel } from "./kanban/[kanban]/kanban-automations-panel";
 import { RealtimeWatcher } from "@/components/realtime-watcher";
 import type {
   DirectoryRow,
@@ -24,8 +29,8 @@ import type {
   ChecklistRow,
   ChecklistSectionRow,
   ChecklistItemRow,
-  KanbanPhaseRow,
   KanbanRow,
+  ProjectSection,
   WorkspaceMemberRow,
 } from "@/lib/types";
 
@@ -150,11 +155,10 @@ export default async function ProjectPage({
   const kanbans = (kanbansRes.data ?? []) as unknown as KanbanRow[];
 
   // Onda 4 (paralelo): phases (flowIds) + checklist_sections (checklistIds) +
-  // fases e cards dos Kanbans (resumo por fase na coluna do board)
+  // Kanbans completos (fases, cards, responsaveis, comentarios, automacoes)
   const flowIds = flows.map((f) => f.id);
   const checklistIds = checklists.map((c) => c.id);
-  const kanbanIds = kanbans.map((k) => k.id);
-  const [phasesRes, sectionsRes, kanbanPhasesRes, kanbanCardsRes] = await Promise.all([
+  const [phasesRes, sectionsRes, kanbanBoards] = await Promise.all([
     flowIds.length
       ? supabase
           .from("phases")
@@ -169,25 +173,14 @@ export default async function ProjectPage({
           .in("checklist_id", checklistIds)
           .order("order_index", { ascending: true })
       : Promise.resolve({ data: [] }),
-    kanbanIds.length
-      ? supabase
-          .from("kanban_phases")
-          .select("*")
-          .in("kanban_id", kanbanIds)
-          .order("position", { ascending: true })
-      : Promise.resolve({ data: [] }),
-    kanbanIds.length
-      ? supabase.from("kanban_cards").select("id, phase_id").in("kanban_id", kanbanIds)
-      : Promise.resolve({ data: [] }),
+    loadKanbanBoards(supabase, {
+      workspace: ctx.workspace,
+      visibleIds,
+      member: ctx.member,
+      project,
+      kanbans,
+    }),
   ]);
-  const kanbanPhasesByKanban: Record<string, KanbanPhaseRow[]> = {};
-  for (const ph of (kanbanPhasesRes.data ?? []) as unknown as KanbanPhaseRow[]) {
-    (kanbanPhasesByKanban[ph.kanban_id] ??= []).push(ph);
-  }
-  const cardCountByPhase: Record<string, number> = {};
-  for (const c of (kanbanCardsRes.data ?? []) as unknown as { phase_id: string }[]) {
-    cardCountByPhase[c.phase_id] = (cardCountByPhase[c.phase_id] ?? 0) + 1;
-  }
   const allPhases = (phasesRes.data ?? []) as unknown as PhaseRow[];
   const sections = (sectionsRes.data ?? []) as unknown as ChecklistSectionRow[];
 
@@ -314,6 +307,193 @@ export default async function ProjectPage({
     phasesByFlow.set(f.id, list);
   }
 
+  const projectHref = `/app/${ctx.workspace.slug}/${directory.slug}/${project.id}`;
+  const canEditChecklist =
+    project.status === "active" &&
+    (ctx.member.role === "admin" || ctx.member.role === "diretor");
+
+  // Secoes da pagina, na ordem escolhida na engrenagem (padrao: Kanbans, Fluxos, Checklists)
+  const pageSections: Record<ProjectSection, React.ReactNode> = {
+    kanbans: (
+      <section key="kanbans" id="kanbans" aria-labelledby="titulo-kanbans" className="scroll-mt-4 space-y-4">
+        <SectionHeader id="titulo-kanbans" title="Kanbans">
+          {canCreateFlow ? (
+            <CreateKanbanButton
+              workspaceSlug={ctx.workspace.slug}
+              directorySlug={directory.slug}
+              projectId={project.id}
+            />
+          ) : null}
+        </SectionHeader>
+        {kanbanBoards.length === 0 ? (
+          <EmptySection
+            title="Nenhum Kanban neste projeto"
+            hint={canCreateFlow ? "Use o botão 'Criar Kanban' acima pra começar." : null}
+          />
+        ) : (
+          <div className="space-y-8">
+            {kanbanBoards.map((board) => (
+              <KanbanBlock
+                key={board.kanban.id}
+                board={board}
+                href={`${projectHref}/kanban/${board.kanban.id}`}
+                workspaceSlug={ctx.workspace.slug}
+                directorySlug={directory.slug}
+                projectId={project.id}
+                members={allMembers}
+                currentUserId={ctx.member.user_id}
+                currentUserRole={ctx.member.role}
+                availableTags={availableTags}
+                tagColors={tagColors}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    ),
+    fluxos: (
+      <section key="fluxos" id="fluxos" aria-labelledby="titulo-fluxos" className="scroll-mt-4 space-y-4">
+        <SectionHeader id="titulo-fluxos" title="Fluxos">
+          {directory.show_reports ? (
+            <Link
+              href={`/app/${ctx.workspace.slug}/relatorios`}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
+              </svg>
+              Relatorios
+            </Link>
+          ) : null}
+          {canCreateFlow ? (
+            <CreateFlowButton
+              workspaceSlug={ctx.workspace.slug}
+              directorySlug={directory.slug}
+              projectId={project.id}
+            />
+          ) : null}
+        </SectionHeader>
+
+        <nav className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm">
+          {(["active", "archived", "completed"] as const).map((s) => {
+            const isActive = s === flowStatus;
+            const href = s === "active" ? projectHref : `${projectHref}?flowStatus=${s}`;
+            return (
+              <Link
+                key={s}
+                href={href}
+                className={[
+                  "flex-1 rounded-lg px-3 py-1.5 text-center font-medium transition",
+                  isActive
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-900",
+                ].join(" ")}
+              >
+                {FLOW_STATUS_LABELS[s]}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {flows.length === 0 ? (
+          <EmptySection
+            title={
+              flowStatus === "active"
+                ? "Nenhum fluxo ativo"
+                : flowStatus === "archived"
+                  ? "Nenhum fluxo arquivado"
+                  : "Nenhum fluxo concluido"
+            }
+            hint={
+              flowStatus !== "active"
+                ? null
+                : canCreateFlow
+                  ? "Use o botão 'Criar fluxo' acima pra começar."
+                  : "Aguardando admin ou diretor criar o primeiro fluxo."
+            }
+          />
+        ) : (
+          <FlowsBoard
+            section="fluxos"
+            workspaceSlug={ctx.workspace.slug}
+            directorySlug={directory.slug}
+            projectId={project.id}
+            projectResponsibleUserId={project.responsible_user_id}
+            workspaceId={ctx.workspace.id}
+            currentUserId={ctx.member.user_id}
+            currentUserRole={ctx.member.role}
+            flows={flows}
+            phasesByFlow={Object.fromEntries(phasesByFlow)}
+            fieldsByPhase={fieldsByPhase}
+            valueByFieldPhase={valueByFieldPhase}
+            attachmentsByPhase={attachmentsByPhase}
+            commentsByPhase={commentsByPhase}
+            responsiblesByPhase={responsiblesByPhase}
+            members={allMembers}
+            checklists={[]}
+            availableTags={availableTags}
+            tagColors={tagColors}
+          />
+        )}
+      </section>
+    ),
+    checklists: (
+      <section key="checklists" id="checklists" aria-labelledby="titulo-checklists" className="scroll-mt-4 space-y-4">
+        <SectionHeader id="titulo-checklists" title="Checklists">
+          {canCreateFlow ? (
+            <CreateChecklistButton
+              workspaceSlug={ctx.workspace.slug}
+              directorySlug={directory.slug}
+              projectId={project.id}
+            />
+          ) : null}
+        </SectionHeader>
+        {checklists.length === 0 ? (
+          <EmptySection
+            title="Nenhuma checklist neste projeto"
+            hint={canCreateFlow ? "Use o botão 'Criar checklist' acima pra começar." : null}
+          />
+        ) : (
+          <FlowsBoard
+            section="checklists"
+            workspaceSlug={ctx.workspace.slug}
+            directorySlug={directory.slug}
+            projectId={project.id}
+            projectResponsibleUserId={project.responsible_user_id}
+            workspaceId={ctx.workspace.id}
+            currentUserId={ctx.member.user_id}
+            currentUserRole={ctx.member.role}
+            flows={[]}
+            phasesByFlow={{}}
+            fieldsByPhase={{}}
+            valueByFieldPhase={{}}
+            attachmentsByPhase={{}}
+            commentsByPhase={{}}
+            responsiblesByPhase={{}}
+            members={allMembers}
+            checklists={checklists}
+            sectionsByChecklist={sectionsByChecklist}
+            itemsBySection={itemsBySection}
+            canEditChecklist={canEditChecklist}
+            availableTags={availableTags}
+            tagColors={tagColors}
+          />
+        )}
+      </section>
+    ),
+  };
+
   return (
     <div className="space-y-8">
       <RealtimeWatcher
@@ -330,6 +510,9 @@ export default async function ProjectPage({
           { table: "checklist_items" },
           { table: "kanban_phases" },
           { table: "kanban_cards" },
+          { table: "kanban_card_responsibles" },
+          { table: "kanban_card_comments" },
+          { table: "kanban_automations" },
         ]}
       />
       <header className="space-y-3">
@@ -427,130 +610,126 @@ export default async function ProjectPage({
         </Card>
       </section>
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900">Fluxos</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            {directory.show_reports ? (
-              <Link
-                href={`/app/${ctx.workspace.slug}/relatorios`}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="18" y1="20" x2="18" y2="10" />
-                  <line x1="12" y1="20" x2="12" y2="4" />
-                  <line x1="6" y1="20" x2="6" y2="14" />
-                </svg>
-                Relatorios
-              </Link>
-            ) : null}
-            {canCreateFlow ? (
-              <>
-                <CreateKanbanButton
-                  workspaceSlug={ctx.workspace.slug}
-                  directorySlug={directory.slug}
-                  projectId={project.id}
-                />
-                <CreateChecklistButton
-                  workspaceSlug={ctx.workspace.slug}
-                  directorySlug={directory.slug}
-                  projectId={project.id}
-                />
-                <CreateFlowButton
-                  workspaceSlug={ctx.workspace.slug}
-                  directorySlug={directory.slug}
-                  projectId={project.id}
-                />
-              </>
-            ) : null}
-          </div>
-        </div>
-
-        <nav className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm">
-          {(["active", "archived", "completed"] as const).map((s) => {
-            const isActive = s === flowStatus;
-            const base = `/app/${ctx.workspace.slug}/${directory.slug}/${project.id}`;
-            const href = s === "active" ? base : `${base}?flowStatus=${s}`;
-            return (
-              <Link
-                key={s}
-                href={href}
-                className={[
-                  "flex-1 rounded-lg px-3 py-1.5 text-center font-medium transition",
-                  isActive
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-900",
-                ].join(" ")}
-              >
-                {FLOW_STATUS_LABELS[s]}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {flows.length === 0 && checklists.length === 0 && kanbans.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-            <p className="font-medium text-slate-700">
-              {flowStatus === "active"
-                ? "Nenhum fluxo ativo"
-                : flowStatus === "archived"
-                  ? "Nenhum fluxo arquivado"
-                  : "Nenhum fluxo concluido"}
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              {!canCreateFlow && flowStatus === "active"
-                ? "Aguardando admin ou diretor criar o primeiro fluxo."
-                : flowStatus === "active"
-                  ? "Use os botoes 'Criar fluxo', 'Criar Kanban' ou 'Criar checklist' acima pra comecar."
-                  : null}
-            </p>
-          </div>
-        ) : (
-          <FlowsBoard
-            id="listas"
-            workspaceSlug={ctx.workspace.slug}
-            directorySlug={directory.slug}
-            projectId={project.id}
-            projectResponsibleUserId={project.responsible_user_id}
-            workspaceId={ctx.workspace.id}
-            currentUserId={ctx.member.user_id}
-            currentUserRole={ctx.member.role}
-            flows={flows}
-            phasesByFlow={Object.fromEntries(phasesByFlow)}
-            fieldsByPhase={fieldsByPhase}
-            valueByFieldPhase={valueByFieldPhase}
-            attachmentsByPhase={attachmentsByPhase}
-            commentsByPhase={commentsByPhase}
-            responsiblesByPhase={responsiblesByPhase}
-            members={allMembers}
-            checklists={checklists}
-            sectionsByChecklist={sectionsByChecklist}
-            itemsBySection={itemsBySection}
-            canEditChecklist={
-              project.status === "active" &&
-              (ctx.member.role === "admin" || ctx.member.role === "diretor")
-            }
-            availableTags={availableTags}
-            tagColors={tagColors}
-            kanbans={kanbans}
-            kanbanPhasesByKanban={kanbanPhasesByKanban}
-            cardCountByPhase={cardCountByPhase}
-          />
-        )}
-      </section>
+      {sectionOrderOf(project.section_order).map((key) => pageSections[key])}
 
       {/* Secao "Lembretes" standalone removida da UI — lembretes agora sao por
           item de checklist. Os reminders existentes continuam disparando pelo cron. */}
     </div>
+  );
+}
+
+function SectionHeader({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 id={id} className="text-lg font-semibold text-slate-900">
+        {title}
+      </h2>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+function EmptySection({ title, hint }: { title: string; hint: string | null }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-5 text-center">
+      <p className="font-medium text-slate-700">{title}</p>
+      {hint ? <p className="mt-1 text-sm text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+// Kanban completo dentro da pagina do projeto: cabecalho (nome, automacoes,
+// editar/excluir) + o mesmo quadro da pagina do Kanban (arrastar, modal do card).
+function KanbanBlock({
+  board,
+  href,
+  workspaceSlug,
+  directorySlug,
+  projectId,
+  members,
+  currentUserId,
+  currentUserRole,
+  availableTags,
+  tagColors,
+}: {
+  board: KanbanBoardData;
+  href: string;
+  workspaceSlug: string;
+  directorySlug: string;
+  projectId: string;
+  members: Pick<WorkspaceMemberRow, "user_id" | "google_full_name" | "google_avatar_url">[];
+  currentUserId: string;
+  currentUserRole: string;
+  availableTags: string[];
+  tagColors: Record<string, string>;
+}) {
+  const { kanban } = board;
+  return (
+    <article aria-label={`Kanban ${kanban.name}`} className="space-y-3">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href={href} className="text-base font-semibold text-slate-900 hover:underline">
+              {kanban.name}
+            </Link>
+            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-700">
+              Kanban
+            </span>
+          </div>
+          {kanban.description ? (
+            <p className="mt-1 max-w-2xl whitespace-pre-line text-sm text-slate-600">
+              {kanban.description}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-start gap-2">
+          <KanbanAutomationsPanel
+            scope={{ workspaceSlug, directorySlug, projectId, kanbanId: kanban.id }}
+            canEdit={board.canEditKanban}
+            sourcePhases={board.phases.map((p) => ({ id: p.id, name: p.name }))}
+            automations={board.automationViews}
+            targets={board.automationTargets}
+          />
+          {board.canEditKanban || board.canDeleteKanban ? (
+            <KanbanHeaderActions
+              workspaceSlug={workspaceSlug}
+              directorySlug={directorySlug}
+              projectId={projectId}
+              kanban={kanban}
+              canEdit={board.canEditKanban}
+              canDelete={board.canDeleteKanban}
+            />
+          ) : null}
+        </div>
+      </header>
+      <KanbanBoard
+        workspaceSlug={workspaceSlug}
+        directorySlug={directorySlug}
+        projectId={projectId}
+        kanban={kanban}
+        phases={board.phases}
+        cards={board.cards}
+        responsiblesByCard={board.responsiblesByCard}
+        commentsByCard={board.commentsByCard}
+        members={members}
+        currentUserId={currentUserId}
+        currentUserRole={currentUserRole}
+        canEditKanban={board.canEditKanban}
+        availableTags={availableTags}
+        tagColors={tagColors}
+        initialOpenCardId={null}
+        originByCard={board.originByCard}
+        generatedByCard={board.generatedByCard}
+      />
+    </article>
   );
 }
 

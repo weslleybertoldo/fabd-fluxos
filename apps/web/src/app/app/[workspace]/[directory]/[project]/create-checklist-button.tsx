@@ -118,7 +118,7 @@ export function CreateChecklistButton({
       reset();
       router.refresh();
       requestAnimationFrame(() => {
-        document.getElementById("listas")?.scrollIntoView({ behavior: "smooth" });
+        document.getElementById("checklists")?.scrollIntoView({ behavior: "smooth" });
       });
     });
   }

@@ -286,13 +286,11 @@ export async function createChecklist(input: {
 }
 
 /**
- * Reordena o board inteiro (fluxos + checklists na mesma ordem visual).
- * Reescreve order_index sequencial (0..N-1) num espaco compartilhado entre as
- * duas tabelas, na ordem recebida.
+ * Reordena um board da pagina do projeto (secao Fluxos ou secao Checklists).
+ * Reescreve order_index sequencial (0..N-1) das colunas recebidas, nessa ordem.
  */
 type BoardColumn =
   | { type: "flow"; id: string }
-  | { type: "kanban"; id: string }
   | { type: "stack"; checklistIds: string[] };
 
 /**
@@ -318,14 +316,6 @@ export async function reorderBoard(input: {
     const col = input.columns[i]!;
     if (col.type === "flow") {
       const { error } = await (supabase.from("flows") as unknown as SimpleMutate)
-        .update({ order_index: i })
-        .eq("id", col.id)
-        .eq("project_id", ctx.project.id)
-        .select()
-        .maybeSingle();
-      if (error) return { ok: false, error: `Reorder ${col.id}: ${error.message}` };
-    } else if (col.type === "kanban") {
-      const { error } = await (supabase.from("kanbans") as unknown as SimpleMutate)
         .update({ order_index: i })
         .eq("id", col.id)
         .eq("project_id", ctx.project.id)

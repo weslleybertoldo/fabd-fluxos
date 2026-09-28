@@ -56,6 +56,9 @@ export type DirectoryRow = {
   updated_at: string;
 };
 
+// Secoes da pagina do projeto; a ordem e escolhida na engrenagem ("Ordem das secoes").
+export type ProjectSection = "kanbans" | "fluxos" | "checklists";
+
 export type ProjectRow = {
   id: string;
   directory_id: string;
@@ -64,6 +67,7 @@ export type ProjectRow = {
   responsible_user_id: string | null;
   status: ProjectStatus;
   order_index: number;
+  section_order: ProjectSection[];
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -314,6 +318,23 @@ export type KanbanCardLink = {
   title: string;
   where: string; // "Marketing › Divulgacao › Artes · fase A fazer"
   href: string | null;
+};
+
+// Regra listada no painel de automacoes do Kanban de origem
+export type AutomationView = {
+  id: string;
+  active: boolean;
+  sourcePhaseName: string;
+  targetLabel: string; // "Marketing › Divulgação › Artes"
+  targetPhaseName: string;
+  targetHref: string | null;
+};
+
+// Kanban que pode receber o card de uma automacao
+export type AutomationTarget = {
+  kanbanId: string;
+  label: string;
+  phases: { id: string; name: string }[];
 };
 
 export type NotificationType =
