@@ -268,6 +268,8 @@ export type KanbanCardRow = {
   created_by: string;
   created_at: string;
   updated_at: string;
+  source_card_id: string | null; // card de origem (automacao)
+  created_by_automation_id: string | null;
 };
 
 export type KanbanCardResponsibleRow = {
@@ -284,6 +286,34 @@ export type KanbanCardCommentRow = {
   content: string;
   created_at: string;
   updated_at: string;
+};
+
+// "Quando o card entrar na fase X (deste Kanban) -> criar card na fase Z do Kanban Y"
+export type KanbanAutomationRow = {
+  id: string;
+  source_kanban_id: string;
+  source_phase_id: string;
+  target_kanban_id: string;
+  target_phase_id: string;
+  active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KanbanAutomationRunRow = {
+  automation_id: string;
+  source_card_id: string;
+  created_card_id: string | null;
+  created_at: string;
+};
+
+// Vinculo "Veio de" / "Gerou" mostrado no modal do card
+export type KanbanCardLink = {
+  cardId: string;
+  title: string;
+  where: string; // "Marketing › Divulgacao › Artes · fase A fazer"
+  href: string | null;
 };
 
 export type NotificationType =

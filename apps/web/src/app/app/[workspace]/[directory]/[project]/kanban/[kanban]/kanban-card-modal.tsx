@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MemberAvatar } from "@/components/member-avatar";
 import { TagSelect } from "@/components/tag-select";
@@ -14,6 +15,7 @@ import {
 } from "@/lib/actions/kanbans";
 import type {
   KanbanCardCommentRow,
+  KanbanCardLink,
   KanbanCardRow,
   KanbanPhaseRow,
   WorkspaceMemberRow,
@@ -37,6 +39,9 @@ interface Props {
   availableTags: string[];
   tagColors: Record<string, string>;
   pending: boolean;
+  // undefined = card criado a mao; null = veio de automacao mas a origem sumiu
+  origin?: KanbanCardLink | null;
+  generated: KanbanCardLink[];
   onMove: (phaseId: string) => void;
   onClose: () => void;
 }
@@ -75,6 +80,8 @@ export function KanbanCardModal({
   availableTags,
   tagColors,
   pending: boardPending,
+  origin,
+  generated,
   onMove,
   onClose,
 }: Props) {
@@ -211,6 +218,42 @@ export function KanbanCardModal({
             ✕
           </button>
         </header>
+
+        {origin !== undefined || generated.length ? (
+          <section className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm">
+            {origin !== undefined ? (
+              <p className="text-amber-900">
+                <span className="font-semibold">Criado por automação</span>
+                {origin ? (
+                  <>
+                    {" "}— veio de{" "}
+                    {origin.href ? (
+                      <Link href={origin.href} className="font-semibold underline underline-offset-2">
+                        {origin.title}
+                      </Link>
+                    ) : (
+                      <strong>{origin.title}</strong>
+                    )}{" "}
+                    <span className="text-amber-800/80">({origin.where})</span>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {generated.map((g) => (
+              <p key={g.cardId} className="text-amber-900">
+                <span className="font-semibold">Gerou:</span>{" "}
+                {g.href ? (
+                  <Link href={g.href} className="font-semibold underline underline-offset-2">
+                    {g.title}
+                  </Link>
+                ) : (
+                  <strong>{g.title}</strong>
+                )}{" "}
+                <span className="text-amber-800/80">({g.where})</span>
+              </p>
+            ))}
+          </section>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1.5 sm:col-span-2">

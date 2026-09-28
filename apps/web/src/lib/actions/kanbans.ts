@@ -806,3 +806,148 @@ export async function deleteKanbanCardComment(
   revalidateKanban(input);
   return { ok: true, data: undefined };
 }
+
+// ============================================================================
+// Automacoes: "quando o card entrar na fase X -> criar card na fase Z do Kanban Y"
+// O disparo e no banco (trigger); aqui so a configuracao.
+// ============================================================================
+
+export async function createKanbanAutomation(
+  input: KanbanScope & { sourcePhaseId: string; targetKanbanId: string; targetPhaseId: string },
+): Promise<ActionResult<{ automationId: string }>> {
+  const db = await getDb();
+  if (!db.userId) return { ok: false, error: "Nao autenticado" };
+  const ctx = await resolveKanban(db, input);
+  if (!ctx.ok) return ctx;
+  if (input.targetKanbanId === ctx.kanban.id) {
+    return { ok: false, error: "Escolha outro Kanban de destino" };
+  }
+
+  const source = (await loadPhases(db, ctx.kanban.id)).find((p) => p.id === input.sourcePhaseId);
+  if (!source) return { ok: false, error: "Fase de origem nao encontrada" };
+  const { data: tkData } = await db
+    .t("kanbans")
+    .select("id, name")
+    .eq("id", input.targetKanbanId)
+    .maybeSingle();
+  const targetKanban = tkData as { id: string; name: string } | null;
+  if (!targetKanban) return { ok: false, error: "Kanban de destino nao encontrado" };
+  const target = (await loadPhases(db, targetKanban.id)).find((p) => p.id === input.targetPhaseId);
+  if (!target) return { ok: false, error: "Fase de destino nao encontrada" };
+
+  const { data, error } = await db
+    .t("kanban_automations")
+    .insert({
+      source_kanban_id: ctx.kanban.id,
+      source_phase_id: source.id,
+      target_kanban_id: targetKanban.id,
+      target_phase_id: target.id,
+      created_by: db.userId,
+    })
+    .select()
+    .maybeSingle();
+  if (error) {
+    if (error.code === "23505") return { ok: false, error: "Essa automacao ja existe" };
+    if (error.code === "23514") {
+      return { ok: false, error: "O Kanban de destino precisa ser do mesmo workspace" };
+    }
+    if (error.code === "42501") return { ok: false, error: "Sem permissao" };
+    return { ok: false, error: error.message };
+  }
+  if (!data) return { ok: false, error: "Sem permissao" };
+  const automationId = (data as { id: string }).id;
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "kanban",
+    entityId: ctx.kanban.id,
+    action: "update",
+    changes: {
+      after: { automacao_nova: `${source.name} → ${targetKanban.name} / ${target.name}` },
+    },
+    context: { ...ctxAudit(ctx), automation_id: automationId },
+  });
+
+  revalidateKanban(input);
+  return { ok: true, data: { automationId } };
+}
+
+export async function setKanbanAutomationActive(
+  input: KanbanScope & { automationId: string; active: boolean },
+): Promise<ActionResult> {
+  const db = await getDb();
+  if (!db.userId) return { ok: false, error: "Nao autenticado" };
+  const ctx = await resolveKanban(db, input);
+  if (!ctx.ok) return ctx;
+
+  const { data, error } = await db
+    .t("kanban_automations")
+    .update({ active: input.active })
+    .eq("id", input.automationId)
+    .eq("source_kanban_id", ctx.kanban.id)
+    .select()
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Sem permissao" };
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "kanban",
+    entityId: ctx.kanban.id,
+    action: "update",
+    changes: { before: { automacao_ativa: !input.active }, after: { automacao_ativa: input.active } },
+    context: { ...ctxAudit(ctx), automation_id: input.automationId },
+  });
+
+  revalidateKanban(input);
+  return { ok: true, data: undefined };
+}
+
+export async function deleteKanbanAutomation(
+  input: KanbanScope & { automationId: string },
+): Promise<ActionResult> {
+  const db = await getDb();
+  if (!db.userId) return { ok: false, error: "Nao autenticado" };
+  const ctx = await resolveKanban(db, input);
+  if (!ctx.ok) return ctx;
+
+  const { data: autoData } = await db
+    .t("kanban_automations")
+    .select("source_phase_id, target_kanban_id, target_phase_id")
+    .eq("id", input.automationId)
+    .eq("source_kanban_id", ctx.kanban.id)
+    .maybeSingle();
+  const auto = autoData as
+    | { source_phase_id: string; target_kanban_id: string; target_phase_id: string }
+    | null;
+  if (!auto) return { ok: false, error: "Automacao nao encontrada" };
+  const [sourcePhases, targetPhases, { data: tkData }] = await Promise.all([
+    loadPhases(db, ctx.kanban.id),
+    loadPhases(db, auto.target_kanban_id),
+    db.t("kanbans").select("name").eq("id", auto.target_kanban_id).maybeSingle(),
+  ]);
+  const label = `${sourcePhases.find((p) => p.id === auto.source_phase_id)?.name ?? "?"} → ${
+    (tkData as { name?: string } | null)?.name ?? "?"
+  } / ${targetPhases.find((p) => p.id === auto.target_phase_id)?.name ?? "?"}`;
+
+  const { data, error } = await db
+    .t("kanban_automations")
+    .delete()
+    .eq("id", input.automationId)
+    .eq("source_kanban_id", ctx.kanban.id)
+    .select();
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) return { ok: false, error: "Sem permissao" };
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    entity: "kanban",
+    entityId: ctx.kanban.id,
+    action: "update",
+    changes: { before: { automacao_excluida: label } },
+    context: { ...ctxAudit(ctx), automation_id: input.automationId },
+  });
+
+  revalidateKanban(input);
+  return { ok: true, data: undefined };
+}

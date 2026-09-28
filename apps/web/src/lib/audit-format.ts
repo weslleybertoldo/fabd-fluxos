@@ -197,6 +197,9 @@ function formatFieldChange(key: string, before: unknown, after: unknown): string
   }
   if (key === "fase_nova") return `criou a fase "${after ?? ""}"`;
   if (key === "fase_excluida") return `excluiu a fase "${before ?? ""}"`;
+  if (key === "automacao_nova") return `criou a automacao "${after ?? ""}"`;
+  if (key === "automacao_excluida") return `excluiu a automacao "${before ?? ""}"`;
+  if (key === "automacao_ativa") return after ? "ativou a automacao" : "pausou a automacao";
   if (key === "type") {
     const map: Record<string, string> = {
       continuous: "continuo",
