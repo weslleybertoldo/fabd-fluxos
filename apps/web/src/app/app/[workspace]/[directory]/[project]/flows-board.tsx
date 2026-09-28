@@ -29,8 +29,6 @@ import type {
   ChecklistSectionRow,
   FlowCommentRow,
   FlowRow,
-  KanbanPhaseRow,
-  KanbanRow,
   PhaseAttachmentRow,
   PhaseFieldRow,
   PhaseFieldValueRow,
@@ -43,21 +41,17 @@ type MemberLite = Pick<
   "user_id" | "google_full_name" | "google_avatar_url"
 >;
 
-// Coluna do board: um fluxo, um Kanban OU uma pilha de checklists (mesma stack_id).
+// Coluna do board: um fluxo OU uma pilha de checklists (mesma stack_id).
+// Os Kanbans ficam na secao propria da pagina do projeto, completos.
 type Column =
   | { kind: "flow"; id: string; order: number; createdAt: string; flow: FlowRow }
-  | { kind: "kanban"; id: string; order: number; createdAt: string; kanban: KanbanRow }
   | { kind: "stack"; id: string; order: number; createdAt: string; checklists: ChecklistRow[] };
 
 const colDndId = (c: Column) => `${c.kind}:${c.id}`;
 
 // Agrupa checklists por stack_id (pilhas), ordena verticalmente por stack_pos, e
-// mistura com os fluxos e Kanbans numa ordem horizontal por order_index.
-function buildColumns(
-  flows: FlowRow[],
-  checklists: ChecklistRow[],
-  kanbans: KanbanRow[],
-): Column[] {
+// mistura com os fluxos numa ordem horizontal por order_index.
+function buildColumns(flows: FlowRow[], checklists: ChecklistRow[]): Column[] {
   const groups = new Map<string, ChecklistRow[]>();
   for (const c of checklists) {
     const key = c.stack_id ?? c.id;
@@ -70,13 +64,6 @@ function buildColumns(
       order: f.order_index,
       createdAt: f.created_at,
       flow: f,
-    })),
-    ...kanbans.map((k) => ({
-      kind: "kanban" as const,
-      id: k.id,
-      order: k.order_index,
-      createdAt: k.created_at,
-      kanban: k,
     })),
     ...Array.from(groups.entries()).map(([key, list]) => {
       const sorted = [...list].sort(
@@ -91,7 +78,7 @@ function buildColumns(
       };
     }),
   ];
-  const rank = (k: Column["kind"]) => (k === "flow" ? 0 : k === "kanban" ? 1 : 2);
+  const rank = (k: Column["kind"]) => (k === "flow" ? 0 : 1);
   cols.sort(
     (a, b) => a.order - b.order || rank(a.kind) - rank(b.kind) || a.createdAt.localeCompare(b.createdAt),
   );
@@ -102,14 +89,16 @@ function columnsToPayload(cols: Column[]) {
   return cols.map((c) =>
     c.kind === "flow"
       ? { type: "flow" as const, id: c.id }
-      : c.kind === "kanban"
-        ? { type: "kanban" as const, id: c.id }
-        : { type: "stack" as const, checklistIds: c.checklists.map((x) => x.id) },
+      : { type: "stack" as const, checklistIds: c.checklists.map((x) => x.id) },
   );
 }
 
+// Defaults estaveis: um [] novo a cada render dispararia o useEffect sem parar.
+const NO_CHECKLISTS: ChecklistRow[] = [];
+
 interface Props {
-  id?: string;
+  // Secao da pagina do projeto onde o board aparece (id do DnD e texto de ajuda).
+  section: "fluxos" | "checklists";
   workspaceSlug: string;
   directorySlug: string;
   projectId: string;
@@ -131,13 +120,10 @@ interface Props {
   canEditChecklist?: boolean;
   availableTags?: string[];
   tagColors?: Record<string, string>;
-  kanbans?: KanbanRow[];
-  kanbanPhasesByKanban?: Record<string, KanbanPhaseRow[]>;
-  cardCountByPhase?: Record<string, number>;
 }
 
 export function FlowsBoard({
-  id,
+  section,
   workspaceSlug,
   directorySlug,
   projectId,
@@ -153,20 +139,15 @@ export function FlowsBoard({
   commentsByPhase,
   responsiblesByPhase,
   members,
-  checklists = [],
+  checklists = NO_CHECKLISTS,
   sectionsByChecklist = {},
   itemsBySection = {},
   canEditChecklist = false,
   availableTags = [],
   tagColors = {},
-  kanbans = [],
-  kanbanPhasesByKanban = {},
-  cardCountByPhase = {},
 }: Props) {
   const router = useRouter();
-  const [cols, setCols] = useState<Column[]>(() =>
-    buildColumns(initialFlows, checklists, kanbans),
-  );
+  const [cols, setCols] = useState<Column[]>(() => buildColumns(initialFlows, checklists));
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [openDetail, setOpenDetail] = useState<{ phase: PhaseRow; flow: FlowRow } | null>(null);
@@ -176,8 +157,8 @@ export function FlowsBoard({
   const authorsMap = Object.fromEntries(members.map((m) => [m.user_id, m]));
 
   useEffect(() => {
-    setCols(buildColumns(initialFlows, checklists, kanbans));
-  }, [initialFlows, checklists, kanbans]);
+    setCols(buildColumns(initialFlows, checklists));
+  }, [initialFlows, checklists]);
 
   function persist(next: Column[]) {
     setCols(next);
@@ -190,7 +171,7 @@ export function FlowsBoard({
       });
       if (!r.ok) {
         setError(r.error);
-        setCols(buildColumns(initialFlows, checklists, kanbans));
+        setCols(buildColumns(initialFlows, checklists));
         return;
       }
       router.refresh();
@@ -239,7 +220,7 @@ export function FlowsBoard({
     return responsiblesByPhase[phase.id]?.includes(currentUserId) ?? false;
   }
 
-  // Pra reordenar o board (fluxos + checklists): so admin. Diretor nao reordena.
+  // Pra reordenar o board (fluxos ou checklists): so admin. Diretor nao reordena.
   const canReorder = isAdmin;
 
   function handleDragEnd(event: DragEndEvent) {
@@ -310,20 +291,21 @@ export function FlowsBoard({
   }
 
   return (
-    <div id={id} className="space-y-3 scroll-mt-4">
+    <div className="space-y-3">
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
 
       {canReorder ? (
         <p className="text-xs text-slate-500">
-          Arraste pelo cabecalho pra reordenar (fluxos, Kanbans e checklists). Solte uma
-          checklist sobre outra pra empilhar (uma abaixo da outra).
+          {section === "fluxos"
+            ? "Arraste pelo cabeçalho pra reordenar os fluxos."
+            : "Arraste pelo cabeçalho pra reordenar. Solte uma checklist sobre outra pra empilhar (uma abaixo da outra)."}
         </p>
       ) : null}
 
       <DndContext
-        id={`project-board-dnd-${projectId}`}
+        id={`project-board-dnd-${projectId}-${section}`}
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={canReorder ? handleDragEnd : undefined}
@@ -347,16 +329,6 @@ export function FlowsBoard({
                   onOpenPhase={(p) => setOpenDetail({ phase: p, flow: c.flow })}
                   onAddPhase={() => setCreatingFor(c.flow)}
                   tagColors={tagColors}
-                />
-              ) : c.kind === "kanban" ? (
-                <SortableKanbanColumn
-                  key={colDndId(c)}
-                  kanban={c.kanban}
-                  phases={kanbanPhasesByKanban[c.id] ?? []}
-                  cardCountByPhase={cardCountByPhase}
-                  href={`/app/${workspaceSlug}/${directorySlug}/${projectId}/kanban/${c.id}`}
-                  canReorder={canReorder}
-                  pending={pending}
                 />
               ) : (
                 <SortableStackColumn
@@ -529,116 +501,6 @@ function SortableFlowColumn(props: {
         onOpenPhase={props.onOpenPhase}
         tagColors={props.tagColors}
       />
-    </div>
-  );
-}
-
-function SortableKanbanColumn(props: {
-  kanban: KanbanRow;
-  phases: KanbanPhaseRow[];
-  cardCountByPhase: Record<string, number>;
-  href: string;
-  canReorder: boolean;
-  pending: boolean;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: `kanban:${props.kanban.id}`, disabled: !props.canReorder || props.pending });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-  };
-  const total = props.phases.reduce((n, p) => n + (props.cardCountByPhase[p.id] ?? 0), 0);
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex w-80 shrink-0 flex-col gap-2 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3"
-    >
-      <header
-        className={`flex items-start gap-2 rounded-xl bg-white p-3 ${
-          props.canReorder ? "cursor-grab active:cursor-grabbing" : ""
-        }`}
-        {...(props.canReorder ? attributes : {})}
-        {...(props.canReorder && listeners ? listeners : {})}
-      >
-        <div className="min-w-0 flex-1">
-          <Link
-            href={props.href}
-            className="line-clamp-2 text-sm font-semibold text-slate-900 hover:underline"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {props.kanban.name}
-          </Link>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-700">
-              Kanban
-            </span>
-            <span className="text-[11px] text-slate-500">
-              {total} {total === 1 ? "card" : "cards"}
-            </span>
-          </div>
-        </div>
-        {props.canReorder ? (
-          <span className="shrink-0 text-slate-300" aria-hidden>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="9" cy="6" r="1.5" />
-              <circle cx="15" cy="6" r="1.5" />
-              <circle cx="9" cy="12" r="1.5" />
-              <circle cx="15" cy="12" r="1.5" />
-              <circle cx="9" cy="18" r="1.5" />
-              <circle cx="15" cy="18" r="1.5" />
-            </svg>
-          </span>
-        ) : null}
-      </header>
-      {props.phases.length === 0 ? (
-        <p className="rounded-xl bg-white px-3 py-4 text-center text-xs italic text-slate-400">
-          Sem fases ainda
-        </p>
-      ) : (
-        <ol className="flex flex-col gap-1.5">
-          {props.phases.map((ph, i) => {
-            const isLast = i === props.phases.length - 1 && props.phases.length > 1;
-            const count = props.cardCountByPhase[ph.id] ?? 0;
-            return (
-              <li
-                key={ph.id}
-                className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm ${
-                  isLast ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"
-                }`}
-              >
-                <span
-                  className={`flex min-w-0 items-center gap-1.5 truncate ${
-                    isLast ? "font-medium text-emerald-800" : "text-slate-700"
-                  }`}
-                >
-                  {isLast ? (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  ) : null}
-                  <span className="truncate">{ph.name}</span>
-                </span>
-                <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                    isLast ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
-                  }`}
-                >
-                  {count}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      <Link
-        href={props.href}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-center text-sm font-medium text-indigo-700 hover:bg-indigo-50"
-      >
-        Abrir Kanban →
-      </Link>
     </div>
   );
 }

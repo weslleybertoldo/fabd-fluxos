@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@fabd-fluxos/db/server";
 import { audit } from "./audit";
 import { notify } from "./notifications";
+import { isSectionOrder } from "../project-sections";
 import type { ProjectRow, DirectoryRow, WorkspaceRow } from "../types";
 
 type ActionResult<T = void> =
@@ -159,8 +160,14 @@ export async function updateProject(input: {
   name?: string;
   description?: string | null;
   responsibleUserId?: string | null;
+  /** Ordem das secoes da pagina (Kanbans / Fluxos / Checklists). */
+  sectionOrder?: string[];
 }): Promise<ActionResult> {
   const { supabase, sb } = await getDb();
+
+  if (input.sectionOrder !== undefined && !isSectionOrder(input.sectionOrder)) {
+    return { ok: false, error: "Ordem das secoes invalida" };
+  }
 
   const ctx = await resolveDirectoryContext(input.workspaceSlug, input.directorySlug);
   if (!ctx.ok) return ctx;
@@ -186,6 +193,9 @@ export async function updateProject(input: {
   if (input.responsibleUserId !== undefined) {
     patch.responsible_user_id = input.responsibleUserId || null;
   }
+  if (input.sectionOrder !== undefined) {
+    patch.section_order = input.sectionOrder;
+  }
   patch.updated_at = new Date().toISOString();
 
   const { data, error } = await sb
@@ -209,11 +219,13 @@ export async function updateProject(input: {
         name: beforeRow.name,
         description: beforeRow.description,
         responsible_user_id: beforeRow.responsible_user_id,
+        section_order: beforeRow.section_order,
       },
       after: {
         name: after.name,
         description: after.description,
         responsible_user_id: after.responsible_user_id,
+        section_order: after.section_order,
       },
     },
     context: {

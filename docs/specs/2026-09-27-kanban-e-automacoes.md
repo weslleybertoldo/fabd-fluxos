@@ -15,12 +15,11 @@
 
 - O Kanban mora dentro do **Projeto**, ao lado dos fluxos e das checklists (hierarquia:
   Workspace › Diretoria › Projeto › {Fluxo | Checklist | Kanban}).
-- No board do projeto, cada Kanban vira **uma coluna** (mesma largura das outras), com o nome, o selo "Kanban"
-  e o resumo por fase ("A fazer 3", "Fazendo 1"…). Admin reordena arrastando, igual aos fluxos.
+- ~~No board do projeto, cada Kanban vira uma coluna-resumo~~ → desde o **W3** (§3b) o Kanban aparece
+  **completo** na página do projeto, numa seção própria.
 - Clicar no nome abre a **página do Kanban** (`/app/<ws>/<dir>/<projeto>/kanban/<id>`) com o quadro inteiro.
-- Kanban não tem status: aparece nas abas Ativos/Arquivados/Concluídos do projeto, igual às checklists hoje.
-- Botão **"+ Criar Kanban"** ao lado de "+ Criar checklist" e "+ Criar fluxo" (mesma regra: admin ou diretor,
-  projeto ativo).
+- Kanban não tem status: a seção Kanbans não depende das abas Ativos/Arquivados/Concluídos (só dos fluxos).
+- Botão **"+ Criar Kanban"** (mesma regra dos fluxos: admin ou diretor, projeto ativo).
 
 ## 2. Kanban (W1)
 
@@ -118,6 +117,24 @@
   movimento: se a criação falhar, o movimento volta.
 - RLS: ver = membro do workspace; criar/editar/excluir = `can_edit_kanban(source_kanban_id)`; `runs` só leitura.
 
+## 3b. Página do projeto em seções (W3)
+
+- **Pedido dele (27/09):** "o Kanban fique completo em cima e o fluxo abaixo e na engrenagem a opção de
+  reordenar (podendo mudar ordem fluxo em cima e Kanban em baixo ou vise versa), check list também". Proposta
+  aprovada ("Sim, pode seguir"): Kanban completo em cima (arrasta ali mesmo), fluxos embaixo, checklists numa
+  faixa só delas, e "Ordem das seções" na engrenagem valendo pro projeto todo.
+- A página do projeto tem 3 seções, cada uma com título e o próprio botão de criar: **Kanbans** (cada Kanban
+  completo: cabeçalho com nome/Automações/Editar/Excluir + o mesmo quadro da página do Kanban), **Fluxos**
+  (Relatórios, "+ Criar fluxo", abas Ativos/Arquivados/Concluídos e o board dos fluxos) e **Checklists** (pilhas
+  de checklist). Seção vazia mostra um aviso curto.
+- Ordem padrão: Kanbans → Fluxos → Checklists. Engrenagem (menu Ações do projeto) → **"Ordem das seções"** →
+  setas ↑/↓ → Salvar. Vale pra todos do projeto; quem vê a engrenagem é quem edita o projeto (admin ou diretor
+  que criou).
+- Arrastar continua dentro de cada seção: fluxos entre si, checklists entre si (e empilhar). A ordem entre
+  Kanbans segue a de criação (não há arrastar entre Kanbans).
+- Dados (migration `20260928000000_project_section_order.sql`): `projects.section_order text[]` (padrão
+  `{kanbans,fluxos,checklists}`) com check = as 3 seções, cada uma uma vez. RLS: a `prj_update` de sempre.
+
 ## 4. Fora do escopo (follow-up)
 - Anexos e campos personalizados no card; notificação para a equipe do Kanban de destino; aviso de vencimento do
   card (o cron de hoje só olha fases de fluxo); relatórios de Kanban; `clone_project` copiar Kanbans; outros
@@ -136,5 +153,8 @@
 - W2: regra criada com os seletores; mover card pra X cria card em Y/Z com os dados; voltar e entrar de novo não
   duplica; laço A→B→A para em 3 saltos; alvo de outro workspace é recusado; sem outro Kanban aparece o aviso;
   vínculos "Veio de"/"Gerou" aparecem e abrem o card.
-- Os dois: `pnpm --filter @fabd-fluxos/web build` sem erro, smoke SQL (positivo e negativo, rollback) N/N PASS,
+- W3: ordem padrão Kanbans → Fluxos → Checklists; Kanban completo na página do projeto (criar card, arrastar e
+  abrir o card ali); "Ordem das seções" troca e persiste (tela e banco); Cancelar não salva; membro não vê a
+  opção e a API recusa (RLS); ordem inválida recusada pelo banco (check).
+- Todos: `pnpm --filter @fabd-fluxos/web build` sem erro, smoke SQL (positivo e negativo, rollback) N/N PASS,
   Playwright logado com prints conferidos em local, staging (preview) e produção.

@@ -12,7 +12,8 @@ import {
   updateProject,
 } from "@/lib/actions/projects";
 import { createTag, deleteTag, setTagColor } from "@/lib/actions/tags";
-import type { ProjectRow, TagRow, WorkspaceMemberRow } from "@/lib/types";
+import { PROJECT_SECTION_LABEL, sectionOrderOf } from "@/lib/project-sections";
+import type { ProjectRow, ProjectSection, TagRow, WorkspaceMemberRow } from "@/lib/types";
 
 interface Props {
   workspaceSlug: string;
@@ -27,7 +28,7 @@ interface Props {
   canManageTags?: boolean;
 }
 
-type Modal = "edit" | "responsible" | "tags" | null;
+type Modal = "edit" | "responsible" | "tags" | "sections" | null;
 
 export function ProjectActions({
   workspaceSlug,
@@ -44,7 +45,38 @@ export function ProjectActions({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [newTag, setNewTag] = useState("");
+  const [order, setOrder] = useState<ProjectSection[]>(() =>
+    sectionOrderOf(project.section_order),
+  );
   const menuRef = useRef<HTMLDivElement>(null);
+
+  function moveSection(index: number, delta: -1 | 1) {
+    setOrder((prev) => {
+      const j = index + delta;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[j]] = [next[j]!, next[index]!];
+      return next;
+    });
+  }
+
+  function saveOrder() {
+    setError(null);
+    start(async () => {
+      const result = await updateProject({
+        workspaceSlug,
+        directorySlug,
+        projectId: project.id,
+        sectionOrder: order,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setModal(null);
+      router.refresh();
+    });
+  }
 
   function addTag() {
     const name = newTag.trim();
@@ -248,6 +280,15 @@ export function ProjectActions({
                 }}
               />
             ) : null}
+            <MenuItem
+              label="Ordem das seções"
+              onClick={() => {
+                setMenuOpen(false);
+                setError(null);
+                setOrder(sectionOrderOf(project.section_order));
+                setModal("sections");
+              }}
+            />
             <div className="my-1 h-px bg-slate-100" />
             {isActive ? (
               <>
@@ -439,6 +480,61 @@ export function ProjectActions({
           </div>
         </ModalShell>
       ) : null}
+
+      {modal === "sections" ? (
+        <ModalShell title="Ordem das seções" onClose={() => setModal(null)} pending={pending}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveOrder();
+            }}
+            className="space-y-4"
+          >
+            <p className="text-sm text-slate-600">
+              Escolha a ordem da página deste projeto. Todo mundo vê a mesma ordem.
+            </p>
+            <ol className="space-y-2">
+              {order.map((section, i) => (
+                <li
+                  key={section}
+                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                >
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                    {i + 1}
+                  </span>
+                  <span className="flex-1 text-sm font-medium text-slate-900">
+                    {PROJECT_SECTION_LABEL[section]}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => moveSection(i, -1)}
+                    disabled={pending || i === 0}
+                    aria-label={`Subir ${PROJECT_SECTION_LABEL[section]}`}
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSection(i, 1)}
+                    disabled={pending || i === order.length - 1}
+                    aria-label={`Descer ${PROJECT_SECTION_LABEL[section]}`}
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    ↓
+                  </button>
+                </li>
+              ))}
+            </ol>
+
+            {error ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+            ) : null}
+
+            <ModalActions onCancel={() => setModal(null)} pending={pending} />
+          </form>
+        </ModalShell>
+      ) : null}
     </>
   );
 }
@@ -488,6 +584,7 @@ function ModalShell({
       className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
+      aria-label={title}
       onClick={(e) => {
         if (e.target === e.currentTarget && !pending) onClose();
       }}
