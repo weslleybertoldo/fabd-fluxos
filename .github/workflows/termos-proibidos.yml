@@ -1,0 +1,36 @@
+name: Termos proibidos
+
+# Falha se um termo proibido aparecer nos arquivos, nos nomes de arquivo, nas
+# mensagens de commit novas ou no título e na descrição do PR. O padrão
+# (regex, sem diferenciar maiúscula) fica escrito com colchetes pra este
+# arquivo não casar consigo mesmo. A lógica está em .github/scripts/.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  termos:
+    name: Termos proibidos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Procurar termos proibidos
+        env:
+          PADRAO: 'b[t]p'
+          EVENTO: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_TITULO: ${{ github.event.pull_request.title }}
+          PR_CORPO: ${{ github.event.pull_request.body }}
+          PUSH_ANTES: ${{ github.event.before }}
+        run: bash .github/scripts/termos-proibidos.sh
